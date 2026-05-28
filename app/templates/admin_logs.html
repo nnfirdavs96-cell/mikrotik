@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Access logs{% endblock %}
+{% block heading %}Access logs{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/admin/logs">
+    <div class="col-md-3">
+        <select name="action" class="form-select">
+            <option value="">Все действия</option>
+            {% for a in actions %}
+            <option value="{{ a }}" {% if action==a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3"><input type="text" name="client_id" value="{{ client_id }}" class="form-control" placeholder="Client ID"></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Фильтр</button></div>
+    <div class="col-md-2"><a href="/admin/logs" class="btn btn-outline-secondary w-100">Сброс</a></div>
+</form>
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>Время</th><th>Действие</th><th>Клиент</th><th>MikroTik</th><th>Old</th><th>New</th><th>Результат</th><th>Ошибка</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+        <tr>
+            <td class="small">{{ l.created_at.strftime('%Y-%m-%d %H:%M:%S') if l.created_at else '' }}</td>
+            <td><span class="badge bg-info text-dark">{{ l.action }}</span></td>
+            <td>{{ l.client_id or '—' }}</td>
+            <td>{{ l.mikrotik_id or '—' }}</td>
+            <td>{{ l.old_status if l.old_status is not none else '—' }}</td>
+            <td>{{ l.new_status if l.new_status is not none else '—' }}</td>
+            <td class="small">{{ l.mikrotik_result or '' }}</td>
+            <td class="small text-danger">{{ l.error_message or '' }}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="8" class="text-muted">Логов нет</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

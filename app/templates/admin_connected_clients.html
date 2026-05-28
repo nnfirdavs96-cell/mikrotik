@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Подключенные клиенты{% endblock %}
+{% block heading %}Подключенные клиенты (DHCP leases){% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+    <div>{% if device %}<span class="text-muted">MikroTik: <strong>{{ device.name }}</strong></span>{% endif %}</div>
+    <a href="/admin/connected-clients" class="btn btn-primary btn-sm"><i class="bi bi-arrow-repeat"></i> Refresh from MikroTik</a>
+</div>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>DHCP статус</th><th>Тип</th><th>Зарегистрирован</th><th>Статус клиента</th></tr></thead>
+    <tbody>
+    {% for l in leases %}
+        <tr>
+            <td>{{ l.address or '—' }}</td>
+            <td class="small">{{ l.mac_address or '—' }}</td>
+            <td>{{ l.hostname or '—' }}</td>
+            <td>{{ l.status or '—' }}</td>
+            <td>{{ 'dynamic' if l.dynamic == 'true' or l.dynamic == True else 'static' }}</td>
+            <td>{% if l.registered %}<span class="badge bg-success">да</span>{% else %}<span class="badge bg-secondary">нет</span>{% endif %}</td>
+            <td>{% if l.client_status is not none %}<span class="badge bg-{{ status_colors[l.client_status] }}">{{ status_labels[l.client_status] }}</span>{% else %}—{% endif %}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="7" class="text-muted">Нет данных</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

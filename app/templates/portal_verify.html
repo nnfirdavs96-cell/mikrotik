@@ -1,0 +1,19 @@
+{% extends "portal_base.html" %}
+{% block title %}Подтверждение кода{% endblock %}
+{% block content %}
+<p class="text-center text-muted">Введите код, отправленный на <strong>{{ phone }}</strong>.</p>
+{% if dev_code %}
+<div class="alert alert-info py-2 text-center">
+    <span class="small">Демо-режим (mock SMS). Ваш код:</span> <strong class="fs-5">{{ dev_code }}</strong>
+</div>
+{% endif %}
+<form method="post" action="/portal/verify-otp">
+    <div class="mb-3">
+        <input type="text" name="code" class="form-control form-control-lg text-center" placeholder="------" inputmode="numeric" autofocus required>
+    </div>
+    <div class="d-grid gap-2">
+        <button class="btn btn-primary btn-lg">Подтвердить</button>
+        <a href="/portal/phone" class="btn btn-link">Изменить номер / отправить заново</a>
+    </div>
+</form>
+{% endblock %}

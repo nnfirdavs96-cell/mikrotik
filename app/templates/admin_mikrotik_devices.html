@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}MikroTik{% endblock %}
+{% block heading %}MikroTik устройства{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+    <a href="/admin/mikrotik/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Добавить MikroTik</a>
+</div>
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>ID</th><th>Название</th><th>Host</th><th>Port</th><th>User</th><th>SSL</th><th>Active</th><th>Статус</th><th>Действия</th></tr></thead>
+    <tbody>
+    {% for d in devices %}
+        <tr>
+            <td>{{ d.id }}</td>
+            <td>{{ d.name }}</td>
+            <td>{{ d.host }}</td>
+            <td>{{ d.port }}</td>
+            <td>{{ d.username }}</td>
+            <td>{{ 'да' if d.use_ssl else 'нет' }}</td>
+            <td>{% if d.is_active %}<span class="badge bg-success">active</span>{% else %}<span class="badge bg-secondary">—</span>{% endif %}</td>
+            <td>
+                {% if d.last_status == 'ok' %}<span class="badge bg-success">ok</span>
+                {% elif d.last_status == 'error' %}<span class="badge bg-danger" title="{{ d.last_error }}">error</span>
+                {% else %}<span class="badge bg-light text-dark">не проверен</span>{% endif %}
+            </td>
+            <td class="text-nowrap">
+                <form class="d-inline" method="post" action="/admin/mikrotik/{{ d.id }}/test"><button class="btn btn-sm btn-outline-info" title="Test Connection"><i class="bi bi-plug"></i></button></form>
+                <a href="/admin/mikrotik/{{ d.id }}/edit" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                {% if not d.is_active %}<form class="d-inline" method="post" action="/admin/mikrotik/{{ d.id }}/set-active"><button class="btn btn-sm btn-outline-success" title="Set Active"><i class="bi bi-star"></i></button></form>{% endif %}
+                <form class="d-inline js-confirm" method="post" action="/admin/mikrotik/{{ d.id }}/delete"><button class="btn btn-sm btn-outline-secondary" title="Delete"><i class="bi bi-trash"></i></button></form>
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="9" class="text-muted">Устройств нет. <a href="/admin/mikrotik/new">Добавить</a></td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "portal_base.html" %}
+{% block title %}Готово{% endblock %}
+{% block content %}
+<div class="text-center">
+    <div class="display-1 text-success"><i class="bi bi-check-circle-fill"></i></div>
+    <h5 class="mt-2">Интернет успешно активирован!</h5>
+    {% if not mikrotik_ok %}
+    <div class="alert alert-warning mt-3 small">
+        Доступ записан в системе, но MikroTik сейчас недоступен — администратор синхронизирует доступ.
+    </div>
+    {% endif %}
+    {% if client %}
+    <div class="card mt-3 text-start"><div class="card-body small">
+        <div>Телефон: <strong>{{ client.phone }}</strong></div>
+        {% if client.expires_at %}<div>Действует до: <strong>{{ client.expires_at.strftime('%Y-%m-%d %H:%M') }}</strong></div>{% endif %}
+        {% if client.ip_address %}<div>IP: <strong>{{ client.ip_address }}</strong></div>{% endif %}
+    </div></div>
+    {% endif %}
+    <a href="/portal/status" class="btn btn-outline-primary mt-3">Мой статус</a>
+</div>
+{% endblock %}

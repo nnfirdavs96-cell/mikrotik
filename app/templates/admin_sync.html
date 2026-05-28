@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Синхронизация{% endblock %}
+{% block heading %}Синхронизация с MikroTik{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+    <p>Синхронизация приводит address-list <code>allowed_clients</code> в соответствие с базой:</p>
+    <ul class="small text-muted">
+        <li>все клиенты со <strong>status=active</strong> будут добавлены в allowed_clients;</li>
+        <li>все остальные IP будут удалены из allowed_clients.</li>
+    </ul>
+    {% if device %}<p class="mb-3">Активный MikroTik: <strong>{{ device.name }}</strong> ({{ device.host }})</p>
+    {% else %}<div class="alert alert-warning">Нет активного MikroTik устройства.</div>{% endif %}
+    <form method="post" action="/admin/sync">
+        <button class="btn btn-primary" {{ 'disabled' if not device else '' }}><i class="bi bi-arrow-repeat"></i> Sync with MikroTik</button>
+    </form>
+</div></div>
+
+{% if result %}
+<div class="card"><div class="card-body">
+    <h6>Результат</h6>
+    {% if result.success %}
+        <ul class="mb-0">
+            <li>Добавлено: <strong>{{ result.added }}</strong></li>
+            <li>Удалено: <strong>{{ result.removed }}</strong></li>
+            <li>Уже было правильно: <strong>{{ result.already }}</strong></li>
+            <li>Ошибок: <strong>{{ result.errors|length }}</strong></li>
+        </ul>
+        {% if result.errors %}<div class="alert alert-warning mt-2"><ul class="mb-0">{% for e in result.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+    {% else %}
+        <div class="alert alert-danger">{{ result.message }} {{ result.details or '' }}</div>
+    {% endif %}
+</div></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Клиенты{% endblock %}
+{% block heading %}Клиенты{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/admin/clients">
+    <div class="col-md-4">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Поиск: телефон / MAC / IP">
+    </div>
+    <div class="col-md-3">
+        <select name="status" class="form-select">
+            <option value="all" {% if status=='all' %}selected{% endif %}>Все статусы</option>
+            <option value="1" {% if status=='1' %}selected{% endif %}>active</option>
+            <option value="0" {% if status=='0' %}selected{% endif %}>inactive</option>
+            <option value="2" {% if status=='2' %}selected{% endif %}>pending_payment</option>
+            <option value="3" {% if status=='3' %}selected{% endif %}>expired</option>
+            <option value="4" {% if status=='4' %}selected{% endif %}>blocked</option>
+        </select>
+    </div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Найти</button></div>
+    <div class="col-md-2"><a href="/admin/clients" class="btn btn-outline-secondary w-100">Сброс</a></div>
+</form>
+
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr>
+        <th>ID</th><th>Телефон</th><th>✓</th><th>MAC</th><th>IP</th><th>Hostname</th>
+        <th>Статус</th><th>Тариф</th><th>Истекает</th><th>Действия</th>
+    </tr></thead>
+    <tbody>
+    {% for c in clients %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.phone }}</td>
+            <td>{% if c.phone_verified %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-x-circle text-muted"></i>{% endif %}</td>
+            <td class="small">{{ c.mac_address or '—' }}</td>
+            <td class="small">{{ c.ip_address or '—' }}</td>
+            <td class="small">{{ c.hostname or '—' }}</td>
+            <td><span class="badge bg-{{ status_colors[c.status] }}">{{ status_labels[c.status] }}</span></td>
+            <td>{{ c.tariff.name if c.tariff else '—' }}</td>
+            <td class="small">{{ c.expires_at.strftime('%Y-%m-%d %H:%M') if c.expires_at else '—' }}</td>
+            <td class="text-nowrap">
+                <a href="/admin/clients/{{ c.id }}/edit" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                <form class="d-inline" method="post" action="/admin/clients/{{ c.id }}/activate"><button class="btn btn-sm btn-outline-success" title="Activate"><i class="bi bi-play"></i></button></form>
+                <form class="d-inline" method="post" action="/admin/clients/{{ c.id }}/deactivate"><button class="btn btn-sm btn-outline-danger" title="Deactivate"><i class="bi bi-pause"></i></button></form>
+                <form class="d-inline" method="post" action="/admin/clients/{{ c.id }}/block"><button class="btn btn-sm btn-outline-dark" title="Block"><i class="bi bi-slash-circle"></i></button></form>
+                <form class="d-inline js-confirm" method="post" action="/admin/clients/{{ c.id }}/delete"><button class="btn btn-sm btn-outline-secondary" title="Delete"><i class="bi bi-trash"></i></button></form>
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="10" class="text-muted">Клиентов нет</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

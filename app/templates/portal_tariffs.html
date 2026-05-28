@@ -1,0 +1,27 @@
+{% extends "portal_base.html" %}
+{% block title %}Выбор тарифа{% endblock %}
+{% block content %}
+<p class="text-center text-muted">Выберите тариф:</p>
+{% for t in tariffs %}
+<div class="card mb-2">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+            <div class="fw-bold">{{ t.name }}</div>
+            <div class="small text-muted">{{ t.description or '' }}</div>
+            <div class="small">
+                {{ t.validity_days }} дн.
+                {% if t.speed_limit %}· {{ t.speed_limit }}{% endif %}
+                {% if t.traffic_limit %}· {{ t.traffic_limit }}{% endif %}
+            </div>
+        </div>
+        <form method="post" action="/portal/select-tariff" class="text-end">
+            <input type="hidden" name="tariff_id" value="{{ t.id }}">
+            <div class="fs-5 fw-bold">{{ t.price }} {{ t.currency }}</div>
+            <button class="btn btn-sm btn-primary mt-1">Выбрать</button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning">Нет доступных тарифов. Обратитесь к администратору.</div>
+{% endfor %}
+{% endblock %}

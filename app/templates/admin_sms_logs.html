@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}SMS / OTP логи{% endblock %}
+{% block heading %}SMS / OTP логи{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>ID</th><th>Телефон</th><th>Провайдер</th><th>Статус</th><th>Сообщение</th><th>Ошибка</th><th>Дата</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+        <tr>
+            <td>{{ l.id }}</td>
+            <td>{{ l.phone }}</td>
+            <td>{{ l.provider }}</td>
+            <td>{% if l.status == 'sent' %}<span class="badge bg-success">sent</span>{% else %}<span class="badge bg-danger">{{ l.status }}</span>{% endif %}</td>
+            <td class="small">{{ l.message }}</td>
+            <td class="small text-danger">{{ l.error_message or '' }}</td>
+            <td class="small">{{ l.created_at.strftime('%Y-%m-%d %H:%M') if l.created_at else '' }}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="7" class="text-muted">Логов нет</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

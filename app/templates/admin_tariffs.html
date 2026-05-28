@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Тарифы{% endblock %}
+{% block heading %}Тарифы{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+    <a href="/admin/tariffs/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Создать тариф</a>
+</div>
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>ID</th><th>Название</th><th>Цена</th><th>Дней</th><th>Скорость</th><th>Трафик</th><th>Активен</th><th>Действия</th></tr></thead>
+    <tbody>
+    {% for t in tariffs %}
+        <tr>
+            <td>{{ t.id }}</td>
+            <td>{{ t.name }}<div class="small text-muted">{{ t.description or '' }}</div></td>
+            <td>{{ t.price }} {{ t.currency }}</td>
+            <td>{{ t.validity_days }}</td>
+            <td>{{ t.speed_limit or '—' }}</td>
+            <td>{{ t.traffic_limit or '—' }}</td>
+            <td>{% if t.is_active %}<span class="badge bg-success">да</span>{% else %}<span class="badge bg-secondary">нет</span>{% endif %}</td>
+            <td class="text-nowrap">
+                <a href="/admin/tariffs/{{ t.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                <form class="d-inline js-confirm" method="post" action="/admin/tariffs/{{ t.id }}/delete"><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-trash"></i></button></form>
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="8" class="text-muted">Тарифов нет</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

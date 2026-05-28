@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Платежи{% endblock %}
+{% block heading %}Платежи{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/admin/payments">
+    <div class="col-md-3">
+        <select name="status" class="form-select">
+            <option value="">Все статусы</option>
+            {% for s in ['pending','paid','failed','cancelled','expired'] %}
+            <option value="{{ s }}" {% if status==s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3"><input type="text" name="phone" value="{{ phone }}" class="form-control" placeholder="Телефон"></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Фильтр</button></div>
+    <div class="col-md-2"><a href="/admin/payments" class="btn btn-outline-secondary w-100">Сброс</a></div>
+</form>
+<div class="card"><div class="card-body table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>ID</th><th>Клиент</th><th>Телефон</th><th>Сумма</th><th>Провайдер</th><th>Статус</th><th>Создан</th><th>Оплачен</th><th>Ошибка</th></tr></thead>
+    <tbody>
+    {% for p in payments %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.client_id or '—' }}</td>
+            <td>{{ client_map[p.client_id].phone if p.client_id in client_map else '—' }}</td>
+            <td>{{ p.amount }} {{ p.currency }}</td>
+            <td>{{ p.provider }}</td>
+            <td><span class="badge bg-{{ payment_status_colors.get(p.status, 'secondary') }}">{{ p.status }}</span></td>
+            <td class="small">{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</td>
+            <td class="small">{{ p.paid_at.strftime('%Y-%m-%d %H:%M') if p.paid_at else '—' }}</td>
+            <td class="small text-danger">{{ p.error_message or '' }}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="9" class="text-muted">Платежей нет</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}
