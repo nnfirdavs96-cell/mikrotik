@@ -1,0 +1,1646 @@
+Ты опытный Senior Python Backend Developer, Linux Engineer, MikroTik RouterOS API Specialist и разработчик Captive Portal систем.
+
+Нужно создать полноценную MVP-программу для управления доступом клиентов к интернету через главный MikroTik.
+
+Проект должен быть написан на Python 3 и работать на Linux сервере: Ubuntu Server или CentOS.
+
+Главная задача:
+Создать систему, где клиент после подключения к Wi-Fi сам проходит регистрацию через mini web-интерфейс / captive portal, вводит номер телефона, получает SMS-код, подтверждает номер, выбирает тариф, оплачивает через электронный кошелёк, после чего интернет автоматически активируется на его устройстве через главный MikroTik.
+
+Также должна быть web-панель администратора, где можно управлять MikroTik, клиентами, тарифами, платежами, логами и вручную активировать/деактивировать клиентов.
+
+Система должна состоять из трёх основных частей:
+
+1. Admin Panel
+Для администратора:
+- добавление MikroTik;
+- проверка подключения к MikroTik;
+- управление клиентами;
+- управление тарифами;
+- просмотр платежей;
+- просмотр SMS/OTP логов;
+- просмотр access logs;
+- ручная активация/деактивация клиента;
+- синхронизация базы с MikroTik.
+
+2. Client Portal / Captive Portal
+Для клиента:
+- подключился к Wi-Fi;
+- открыл mini web-интерфейс;
+- ввёл номер телефона;
+- получил SMS-код;
+- подтвердил SMS-код;
+- выбрал тариф;
+- оплатил тариф;
+- получил интернет автоматически.
+
+3. MikroTik API Service
+Сервис, который:
+- подключается к MikroTik через RouterOS API;
+- получает IP и MAC клиента из DHCP leases;
+- добавляет IP клиента в address-list allowed_clients;
+- удаляет IP клиента из allowed_clients;
+- синхронизирует базу с MikroTik.
+
+ОБЩАЯ ЛОГИКА РАБОТЫ
+
+Есть:
+1. Главный MikroTik.
+2. Несколько Wi-Fi точек доступа / AP.
+3. Клиенты подключаются к Wi-Fi.
+4. MikroTik выдаёт клиенту IP через DHCP.
+5. Клиент пока не имеет доступа к интернету.
+6. Клиент открывает mini portal.
+7. Backend определяет IP клиента через request.client.host.
+8. Backend через MikroTik RouterOS API находит DHCP lease клиента.
+9. Из DHCP lease берётся:
+   - IP-адрес клиента;
+   - MAC-адрес клиента;
+   - hostname, если есть.
+10. Клиент сам вводит номер телефона.
+11. Backend отправляет SMS-код.
+12. Клиент вводит SMS-код.
+13. После подтверждения клиент выбирает тариф.
+14. Клиент оплачивает тариф через электронный кошелёк.
+15. После успешной оплаты backend активирует клиента.
+16. IP клиента добавляется в MikroTik address-list allowed_clients.
+17. Клиент получает интернет.
+18. Когда срок тарифа заканчивается, система должна деактивировать клиента и удалить IP из allowed_clients.
+
+ВАЖНО:
+Клиент не должен сам вводить MAC-адрес и IP-адрес.
+MAC и IP должны автоматически определяться через MikroTik DHCP lease после подключения клиента к Wi-Fi.
+
+Для MVP реальные SMS и реальную оплату можно сделать через mock provider, но архитектура должна быть готова для подключения настоящего SMS API и настоящей платёжной системы.
+
+ВАЖНОЕ ТРЕБОВАНИЕ ПО MIKROTIK
+
+Управление главным MikroTik должно выполняться только через MikroTik RouterOS API.
+
+Нельзя использовать:
+- SSH;
+- telnet;
+- WinBox;
+- ручной ввод команд;
+- выполнение CLI-команд через shell.
+
+Python-программа должна подключаться к MikroTik через RouterOS API и автоматически выполнять все действия.
+
+Использовать порт:
+- 8728 для обычного API;
+- 8729 для API-SSL, если включён SSL.
+
+Для работы с MikroTik использовать Python-библиотеку:
+- librouteros
+или
+- routeros-api.
+
+Лучше использовать librouteros, если она стабильнее для RouterOS v6/v7.
+
+Основные разделы MikroTik, с которыми должна работать программа:
+
+1. DHCP leases:
+
+/ip/dhcp-server/lease
+
+Нужно получать:
+- address;
+- mac-address;
+- host-name;
+- status;
+- dynamic;
+- comment.
+
+2. Firewall address-list:
+
+/ip/firewall/address-list
+
+Основная address-list:
+
+allowed_clients
+
+Логика доступа:
+- если клиент активирован, его IP добавляется в address-list allowed_clients;
+- если клиент деактивирован, его IP удаляется из address-list allowed_clients.
+
+Комментарий в MikroTik address-list должен быть таким:
+
+wifi-client | phone=<phone> | mac=<mac_address> | client_id=<client_id>
+
+Пример:
+
+wifi-client | phone=+992900000000 | mac=AA:BB:CC:DD:EE:FF | client_id=1
+
+MikroTik firewall-логика:
+В MikroTik должны быть правила:
+1. Разрешить клиентам из allowed_clients выход в интернет.
+2. Заблокировать остальных клиентов из гостевой Wi-Fi сети.
+3. Разрешить DHCP.
+4. Разрешить DNS.
+5. Разрешить доступ к серверу portal.
+6. Разрешить доступ к платёжной системе и SMS provider, если это нужно.
+
+Пример гостевой сети:
+
+192.168.50.0/24
+
+Пример backend portal server:
+
+192.168.50.2 или 192.168.0.100
+
+В README нужно добавить пример правил MikroTik RouterOS.
+
+Пример:
+
+/ip firewall filter
+add chain=forward src-address-list=allowed_clients action=accept comment="Allow paid WiFi clients"
+add chain=forward src-address=192.168.50.0/24 dst-address=<BACKEND_SERVER_IP> action=accept comment="Allow access to portal server"
+add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=53 action=accept comment="Allow DNS for guest clients"
+add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=67,68 action=accept comment="Allow DHCP for guest clients"
+add chain=forward src-address=192.168.50.0/24 action=drop comment="Block unpaid WiFi clients"
+
+/ip firewall nat
+add chain=srcnat src-address=192.168.50.0/24 out-interface-list=WAN action=masquerade comment="NAT guest WiFi"
+
+Важно:
+В README обязательно добавить предупреждение:
+- перед применением firewall сделать backup MikroTik;
+- сначала тестировать на отдельной guest Wi-Fi сети;
+- не применять правила на основной офисной сети;
+- сначала добавить разрешающие правила для админской сети;
+- не применять drop rule без проверки;
+- API-порт MikroTik нельзя открывать в интернет;
+- разрешить доступ к API только с IP сервера, где работает программа;
+- для production лучше использовать API-SSL 8729.
+
+НАСТРОЙКА MIKROTIK API
+
+В README добавить инструкцию:
+
+Включить API:
+
+/ip service enable api
+/ip service set api port=8728
+
+Для SSL:
+
+/ip service enable api-ssl
+/ip service set api-ssl port=8729
+
+Создать отдельного пользователя для API:
+
+/user group add name=api-policy policy=read,write,api,test
+/user add name=api_user group=api-policy password=strong_password
+
+Ограничить доступ к API только с IP backend-сервера:
+
+/ip firewall filter
+add chain=input src-address=<SERVER_IP> protocol=tcp dst-port=8728 action=accept comment="Allow MikroTik API from backend server"
+add chain=input protocol=tcp dst-port=8728 action=drop comment="Block MikroTik API from others"
+
+СТЕК ПРОЕКТА
+
+Backend:
+- Python 3
+- FastAPI
+- SQLAlchemy
+- Alembic migrations
+- Jinja2 templates для web-интерфейсов
+- Bootstrap 5 или Tailwind CSS для интерфейса
+- SQLite для MVP
+- Возможность легко перейти на PostgreSQL через DATABASE_URL
+- Uvicorn
+- python-dotenv
+- passlib или bcrypt для паролей
+- session/cookie auth для admin panel
+- API key auth для REST API
+- requests/httpx для будущих SMS/payment интеграций
+
+База данных:
+На первом этапе можно использовать SQLite.
+Но архитектура должна позволять перейти на PostgreSQL.
+
+Все настройки должны быть через .env.
+
+.env.example должен содержать:
+
+APP_NAME=WiFi Access Manager
+APP_HOST=0.0.0.0
+APP_PORT=8000
+DATABASE_URL=sqlite:///./wifi_access.db
+SECRET_KEY=change_this_secret_key
+API_SECRET_KEY=change_this_api_key
+
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=strong_password
+
+DEFAULT_ALLOWED_LIST=allowed_clients
+DEFAULT_GUEST_NETWORK=192.168.50.0/24
+
+SMS_PROVIDER=mock
+PAYMENT_PROVIDER=mock
+
+DEFAULT_CURRENCY=TJS
+
+СТРУКТУРА ПРОЕКТА
+
+Создать такую структуру:
+
+project/
+  app/
+    main.py
+    config.py
+    database.py
+    models.py
+    schemas.py
+    auth.py
+    dependencies.py
+
+    mikrotik/
+      client.py
+      service.py
+
+    services/
+      clients.py
+      access_control.py
+      logs.py
+      sync.py
+      mikrotik_devices.py
+      sms.py
+      otp.py
+      payments.py
+      tariffs.py
+      expire.py
+      portal.py
+
+    routers/
+      admin.py
+      portal.py
+      api_clients.py
+      api_mikrotik.py
+      api_sync.py
+      api_health.py
+      api_payments.py
+      api_tasks.py
+
+    templates/
+      base.html
+      login.html
+
+      admin_dashboard.html
+      admin_clients.html
+      admin_client_form.html
+      admin_client_edit.html
+      admin_mikrotik_devices.html
+      admin_mikrotik_form.html
+      admin_tariffs.html
+      admin_tariff_form.html
+      admin_payments.html
+      admin_sms_logs.html
+      admin_logs.html
+      admin_sync.html
+      admin_settings.html
+      admin_connected_clients.html
+
+      portal_base.html
+      portal_index.html
+      portal_phone.html
+      portal_verify.html
+      portal_tariffs.html
+      portal_payment.html
+      portal_success.html
+      portal_failed.html
+      portal_status.html
+
+    static/
+      css/
+        style.css
+      js/
+        app.js
+
+  migrations/ или alembic/
+  systemd/
+    wifi-access-manager.service
+
+  requirements.txt
+  .env.example
+  README.md
+
+МОДЕЛИ БАЗЫ ДАННЫХ
+
+1. Таблица admin_users
+
+Поля:
+- id
+- username
+- password_hash
+- is_active
+- created_at
+- updated_at
+
+Назначение:
+Администраторы web-панели.
+
+Для MVP:
+- первого администратора создать из .env при первом запуске;
+- пароль хранить только в виде hash.
+
+2. Таблица mikrotik_devices
+
+Поля:
+- id
+- name
+- host
+- port
+- username
+- password_encrypted или password
+- use_ssl
+- is_active
+- comment
+- created_at
+- updated_at
+- last_checked_at
+- last_status
+- last_error
+
+Назначение:
+Через web-панель администратор должен иметь возможность добавить MikroTik.
+
+Поля формы добавления MikroTik:
+- название MikroTik;
+- IP/Host;
+- API Port;
+- Username;
+- Password;
+- Use SSL: yes/no;
+- Is Active: yes/no;
+- Comment.
+
+Также должна быть кнопка:
+- Test Connection.
+
+При нажатии Test Connection программа должна проверить доступность MikroTik через RouterOS API и показать результат.
+
+Для MVP только один MikroTik может быть главным active=true.
+Если добавляется новый active MikroTik, остальные можно сделать inactive или предупредить администратора.
+
+3. Таблица clients
+
+Поля:
+- id
+- phone
+- phone_verified
+- mac_address
+- ip_address
+- hostname nullable
+- status
+- tariff_id nullable
+- mikrotik_id
+- created_at
+- updated_at
+- activated_at nullable
+- deactivated_at nullable
+- expires_at nullable
+- comment nullable
+
+status:
+- 0 = inactive / интернет запрещён;
+- 1 = active / интернет разрешён;
+- 2 = pending_payment / ожидает оплату;
+- 3 = expired / срок тарифа истёк;
+- 4 = blocked / заблокирован.
+
+Важно:
+phone вводит сам клиент через portal.
+mac_address и ip_address берутся автоматически через MikroTik DHCP lease.
+
+4. Таблица tariffs
+
+Поля:
+- id
+- name
+- description
+- price
+- currency
+- speed_limit nullable
+- traffic_limit nullable
+- validity_days
+- is_active
+- created_at
+- updated_at
+
+Пример тарифов:
+- 1 день;
+- 7 дней;
+- 30 дней;
+- 1 ГБ;
+- 5 ГБ;
+- безлимит на 1 день.
+
+Для MVP тарифы могут пока только определять срок доступа.
+Ограничение скорости и трафика подготовить в базе, но пока можно не применять на MikroTik.
+
+5. Таблица otp_codes
+
+Поля:
+- id
+- phone
+- code_hash
+- expires_at
+- is_used
+- attempts
+- created_at
+
+Логика:
+- SMS-код действует 5 минут;
+- после 3 неправильных попыток код блокируется;
+- код нельзя хранить в базе открытым текстом, хранить hash;
+- для разработки можно выводить SMS-код в логи;
+- для production подключить SMS provider.
+
+6. Таблица sms_logs
+
+Поля:
+- id
+- phone
+- message
+- provider
+- status
+- error_message nullable
+- created_at
+
+Назначение:
+Логировать отправку SMS.
+
+7. Таблица payments
+
+Поля:
+- id
+- client_id
+- tariff_id
+- amount
+- currency
+- provider
+- provider_payment_id nullable
+- status
+- created_at
+- paid_at nullable
+- error_message nullable
+
+payment status:
+- pending;
+- paid;
+- failed;
+- cancelled;
+- expired.
+
+8. Таблица access_logs
+
+Поля:
+- id
+- client_id nullable
+- mikrotik_id nullable
+- action
+- old_status nullable
+- new_status nullable
+- mikrotik_result nullable
+- error_message nullable
+- created_at
+
+action может быть:
+- create_client;
+- update_client;
+- delete_client;
+- activate;
+- deactivate;
+- activate_after_payment;
+- expire_client;
+- sync;
+- mikrotik_test;
+- send_otp;
+- verify_otp;
+- create_payment;
+- payment_paid;
+- error.
+
+MIKROTIK MODULE
+
+Создать класс MikroTikAPIClient.
+
+Файл:
+
+app/mikrotik/client.py
+
+Методы:
+
+1. connect()
+Подключение к MikroTik через RouterOS API.
+
+2. check_connection()
+Проверка доступности MikroTik.
+
+3. get_system_resource()
+Получить /system/resource для проверки.
+
+4. get_dhcp_leases()
+Получает список DHCP leases из MikroTik:
+- IP address;
+- MAC address;
+- hostname;
+- status;
+- dynamic/static;
+- comment.
+
+5. find_lease_by_ip(ip_address)
+Находит DHCP lease по IP-адресу.
+
+6. find_lease_by_mac(mac_address)
+Находит DHCP lease по MAC-адресу.
+
+7. get_online_clients()
+Получает список клиентов, которые сейчас получили IP через DHCP.
+
+8. add_ip_to_allowed_list(ip_address, phone, mac_address, client_id, list_name="allowed_clients")
+Добавить IP клиента в address-list.
+
+9. remove_ip_from_allowed_list(ip_address, list_name="allowed_clients")
+Удалить IP клиента из address-list.
+
+10. is_ip_in_allowed_list(ip_address, list_name="allowed_clients")
+Проверить, есть ли IP в address-list.
+
+11. get_allowed_clients(list_name="allowed_clients")
+Получить список IP в address-list.
+
+12. sync_allowed_clients(active_clients, list_name="allowed_clients")
+Синхронизировать активных клиентов.
+
+Правила:
+- не создавать дубликат, если IP уже есть;
+- если IP отсутствует при удалении, не считать это критической ошибкой;
+- все ошибки возвращать понятно;
+- программа не должна падать при недоступности MikroTik;
+- все ошибки записывать в access_logs.
+
+CLIENT PORTAL
+
+Нужно создать клиентский web-интерфейс.
+
+URL:
+
+http://SERVER_IP:8000/portal
+
+Или:
+
+http://wifi.local/portal
+
+Страницы клиентского портала:
+
+1. Страница приветствия
+
+URL:
+/portal
+
+Показать:
+- название Wi-Fi сервиса;
+- сообщение: "Для доступа к интернету пройдите регистрацию";
+- кнопка "Начать регистрацию".
+
+2. Ввод номера телефона
+
+URL:
+/portal/phone
+
+Форма:
+- номер телефона.
+
+После ввода номера:
+- backend должен определить IP клиента по request.client.host;
+- через MikroTik API найти DHCP lease по IP;
+- получить MAC-адрес клиента;
+- получить hostname, если есть;
+- сохранить временную сессию регистрации;
+- отправить SMS-код на номер телефона.
+
+Важно:
+Клиент вводит только номер телефона.
+IP и MAC определяются автоматически.
+
+3. Подтверждение SMS-кода
+
+URL:
+/portal/verify
+
+Форма:
+- SMS-код.
+
+После проверки:
+- если код правильный, номер считается подтверждённым;
+- клиент переходит к выбору тарифа;
+- если код неправильный, показать ошибку;
+- после 3 неправильных попыток заблокировать текущий OTP.
+
+4. Выбор тарифа
+
+URL:
+/portal/tariffs
+
+Показать список активных тарифов:
+- название;
+- описание;
+- цена;
+- валюта;
+- срок действия;
+- лимит трафика, если есть;
+- скорость, если есть;
+- кнопка "Выбрать тариф".
+
+5. Оплата
+
+URL:
+/portal/payment
+
+После выбора тарифа:
+- создать платёж;
+- показать сумму;
+- показать тариф;
+- показать кнопку оплаты;
+- поддержать интеграцию с электронным кошельком.
+
+Для MVP сделать mock payment provider:
+- кнопка "Тестовая оплата";
+- после нажатия payment_status становится paid;
+- интернет активируется.
+
+Архитектура должна быть готова для подключения реального электронного кошелька.
+
+6. Успешная активация
+
+URL:
+/portal/success
+
+После успешной оплаты:
+- клиент создаётся или обновляется в базе;
+- status становится 1;
+- activated_at = now;
+- expires_at = now + tariff.validity_days;
+- IP клиента добавляется в MikroTik address-list allowed_clients;
+- показать сообщение: "Интернет успешно активирован".
+
+7. Ошибка оплаты
+
+URL:
+/portal/payment-failed
+
+Показать:
+- причина ошибки;
+- кнопка повторить оплату.
+
+8. Статус клиента
+
+URL:
+/portal/status
+
+Показать:
+- номер телефона;
+- статус доступа;
+- тариф;
+- срок действия;
+- дата окончания;
+- IP;
+- MAC.
+
+ОПРЕДЕЛЕНИЕ IP И MAC КЛИЕНТА
+
+Когда клиент открывает portal, backend должен:
+
+1. Получить IP клиента:
+
+request.client.host
+
+2. Через MikroTik API найти DHCP lease:
+
+/ip/dhcp-server/lease
+
+3. Найти lease, где:
+
+address = client_ip
+
+4. Из lease получить:
+- mac-address;
+- address;
+- host-name;
+- status.
+
+5. Эти данные связать с регистрацией клиента.
+
+Если DHCP lease не найден:
+Показать ошибку:
+
+"Не удалось определить устройство. Переподключитесь к Wi-Fi и попробуйте снова."
+
+CLIENT PORTAL FLOW
+
+Реализовать полный flow:
+
+1. Клиент подключается к Wi-Fi.
+2. MikroTik DHCP выдаёт IP.
+3. Клиент открывает любой сайт или вручную открывает portal.
+4. MikroTik firewall/NAT должен перенаправить клиента без доступа на portal или клиент открывает portal вручную.
+5. Клиент открывает portal.
+6. Backend определяет IP клиента.
+7. Backend через MikroTik API получает MAC из DHCP lease.
+8. Клиент вводит номер телефона.
+9. Backend отправляет SMS-код.
+10. Клиент подтверждает SMS.
+11. Клиент выбирает тариф.
+12. Backend создаёт payment.
+13. Клиент оплачивает.
+14. Payment provider сообщает backend об успешной оплате.
+15. Backend активирует клиента.
+16. Backend добавляет IP клиента в MikroTik allowed_clients.
+17. Клиент получает интернет.
+
+SMS MODULE
+
+Создать модуль:
+
+app/services/sms.py
+
+Класс SMSProvider:
+
+Методы:
+- send_sms(phone, message)
+- send_otp(phone, code)
+
+Для MVP:
+- сделать MockSMSProvider;
+- SMS-код выводить в access_logs или console logs;
+- в .env добавить SMS_PROVIDER=mock.
+
+Архитектура должна позволять потом подключить реальный SMS provider.
+
+OTP MODULE
+
+Создать модуль:
+
+app/services/otp.py
+
+Функции:
+- generate_otp()
+- hash_otp()
+- verify_otp()
+- expire_old_otps()
+- check_attempts()
+
+Логика:
+- OTP 4 или 6 цифр;
+- срок действия 5 минут;
+- максимум 3 попытки;
+- после успешной проверки is_used=true;
+- OTP не хранить открытым текстом.
+
+PAYMENT MODULE
+
+Создать модуль:
+
+app/services/payments.py
+
+Класс PaymentProvider:
+
+Методы:
+- create_payment(client_id, tariff_id, amount)
+- check_payment_status(payment_id)
+- handle_webhook(payload)
+
+Для MVP:
+- сделать MockPaymentProvider;
+- в клиентском портале сделать кнопку "Тестовая оплата";
+- после нажатия статус платежа становится paid;
+- клиент автоматически активируется.
+
+В будущем заменить на реальный электронный кошелёк.
+
+WEBHOOK ДЛЯ ОПЛАТЫ
+
+Добавить endpoint:
+
+POST /api/payments/webhook
+
+Назначение:
+- принимать callback от платёжной системы;
+- проверять статус платежа;
+- если payment status = paid:
+  - активировать клиента;
+  - добавить IP клиента в MikroTik allowed_clients;
+  - записать лог.
+
+АВТОМАТИЧЕСКАЯ АКТИВАЦИЯ ПОСЛЕ ОПЛАТЫ
+
+После успешной оплаты:
+
+1. payment.status = paid
+2. payment.paid_at = now
+3. client.status = 1
+4. client.activated_at = now
+5. client.expires_at = now + tariff.validity_days
+6. IP клиента добавляется в MikroTik address-list allowed_clients
+7. В access_logs записывается action=activate_after_payment
+
+АВТОМАТИЧЕСКАЯ ДЕАКТИВАЦИЯ ПО ИСТЕЧЕНИЮ ТАРИФА
+
+Добавить задачу expire_clients.
+
+Логика:
+- периодически проверять клиентов, у которых expires_at < now и status=1;
+- менять status на 3 expired;
+- удалять IP из MikroTik allowed_clients;
+- записывать лог.
+
+Для MVP можно сделать endpoint:
+
+POST /api/tasks/expire-clients
+
+И отдельную команду/cron в README.
+
+В будущем можно добавить Celery или APScheduler.
+
+ADMIN PANEL
+
+Нужно обязательно создать web-панель администратора.
+
+Панель должна быть доступна по адресу:
+
+http://SERVER_IP:8000/admin
+
+1. Страница входа администратора
+
+URL:
+/admin/login
+
+Функции:
+- вход по логину и паролю;
+- логин и пароль берутся из базы admin_users;
+- первого админа создать из .env;
+- после входа открыть dashboard;
+- без авторизации нельзя заходить в админ-панель.
+
+2. Dashboard
+
+URL:
+/admin
+
+Показать:
+- общее количество клиентов;
+- количество активных клиентов;
+- количество неактивных клиентов;
+- количество pending_payment;
+- количество expired;
+- количество MikroTik устройств;
+- какой MikroTik сейчас активный;
+- статус подключения к активному MikroTik;
+- количество IP в MikroTik address-list allowed_clients;
+- количество платежей сегодня;
+- сумма оплат сегодня;
+- последние 10 действий из access_logs.
+
+3. Управление MikroTik
+
+URL:
+/admin/mikrotik
+
+Показать список MikroTik устройств:
+- ID;
+- название;
+- host;
+- port;
+- username;
+- use_ssl;
+- is_active;
+- last_status;
+- last_error;
+- кнопка Test Connection;
+- кнопка Edit;
+- кнопка Delete;
+- кнопка Set Active.
+
+4. Добавление MikroTik
+
+URL:
+/admin/mikrotik/new
+
+Форма:
+- name;
+- host;
+- port;
+- username;
+- password;
+- use_ssl;
+- is_active;
+- comment.
+
+После сохранения MikroTik должен сохраняться в базе.
+
+5. Редактирование MikroTik
+
+URL:
+/admin/mikrotik/{id}/edit
+
+Можно менять:
+- name;
+- host;
+- port;
+- username;
+- password;
+- use_ssl;
+- is_active;
+- comment.
+
+Пароль при редактировании:
+- если поле password пустое, оставить старый пароль;
+- если заполнено, заменить пароль.
+
+6. Test Connection для MikroTik
+
+URL:
+/admin/mikrotik/{id}/test
+
+При нажатии:
+- подключиться к MikroTik через RouterOS API;
+- проверить доступность /system/resource или /ip/firewall/address-list;
+- обновить last_status;
+- обновить last_error;
+- записать действие в access_logs;
+- показать результат в web-панели.
+
+7. Подключенные клиенты из DHCP lease
+
+URL:
+/admin/connected-clients
+
+На этой странице программа должна показывать клиентов из MikroTik DHCP leases.
+
+Таблица:
+- IP address;
+- MAC address;
+- hostname;
+- DHCP status;
+- dynamic/static;
+- already registered: yes/no;
+- client status, если уже зарегистрирован.
+
+Добавить кнопку:
+- Refresh from MikroTik.
+
+При нажатии:
+- программа заново получает DHCP leases из MikroTik через RouterOS API;
+- показывает актуальный список подключенных устройств.
+
+8. Список клиентов
+
+URL:
+/admin/clients
+
+Таблица:
+- ID;
+- phone;
+- phone_verified;
+- MAC-address;
+- IP-address;
+- hostname;
+- status;
+- tariff;
+- MikroTik;
+- expires_at;
+- created_at;
+- activated_at;
+- deactivated_at;
+- кнопка Activate;
+- кнопка Deactivate;
+- кнопка Block;
+- кнопка Edit;
+- кнопка Delete.
+
+Нужно добавить поиск:
+- по номеру телефона;
+- по MAC;
+- по IP.
+
+Нужно добавить фильтр:
+- все;
+- active;
+- inactive;
+- pending_payment;
+- expired;
+- blocked.
+
+9. Редактирование клиента
+
+URL:
+/admin/clients/{id}/edit
+
+Можно менять:
+- phone;
+- tariff;
+- mikrotik;
+- comment;
+- status;
+- expires_at.
+
+MAC и IP вручную менять нельзя в обычном режиме.
+MAC и IP берутся из MikroTik DHCP lease.
+Можно добавить отдельный Manual Admin Mode, но по умолчанию нельзя редактировать MAC/IP.
+
+Если status меняется с 0 на 1:
+- добавить IP клиента в MikroTik address-list allowed_clients;
+- записать activated_at;
+- записать access_logs.
+
+Если status меняется с 1 на 0:
+- удалить IP клиента из MikroTik address-list allowed_clients;
+- записать deactivated_at;
+- записать access_logs.
+
+10. Активация клиента
+
+URL:
+/admin/clients/{id}/activate
+
+При нажатии Activate:
+- проверить активный MikroTik;
+- подключиться к MikroTik через RouterOS API;
+- проверить, есть ли IP клиента в address-list allowed_clients;
+- если нет, добавить;
+- если уже есть, не создавать дубликат;
+- status в базе сделать 1;
+- activated_at заполнить текущим временем;
+- записать лог;
+- показать результат в web-панели.
+
+11. Деактивация клиента
+
+URL:
+/admin/clients/{id}/deactivate
+
+При нажатии Deactivate:
+- подключиться к MikroTik через RouterOS API;
+- найти IP клиента в address-list allowed_clients;
+- удалить его;
+- если IP уже отсутствует, считать операцию успешной, но записать это в лог;
+- status в базе сделать 0;
+- deactivated_at заполнить текущим временем;
+- записать лог;
+- показать результат в web-панели.
+
+12. Блокировка клиента
+
+URL:
+/admin/clients/{id}/block
+
+При нажатии Block:
+- удалить IP клиента из allowed_clients;
+- status = 4 blocked;
+- записать лог.
+
+13. Тарифы
+
+URL:
+/admin/tariffs
+
+Админ должен через web-панель создавать и редактировать тарифы.
+
+Поля тарифа:
+- name;
+- description;
+- price;
+- currency;
+- validity_days;
+- speed_limit;
+- traffic_limit;
+- is_active.
+
+Страницы:
+- /admin/tariffs
+- /admin/tariffs/new
+- /admin/tariffs/{id}/edit
+
+14. Платежи
+
+URL:
+/admin/payments
+
+Показать:
+- ID;
+- client;
+- phone;
+- tariff;
+- amount;
+- currency;
+- provider;
+- status;
+- created_at;
+- paid_at;
+- error_message.
+
+Фильтры:
+- status;
+- date;
+- phone.
+
+15. OTP/SMS logs
+
+URL:
+/admin/sms-logs
+
+Показать:
+- номер телефона;
+- provider;
+- status;
+- дата;
+- ошибка, если есть.
+
+16. Access logs
+
+URL:
+/admin/logs
+
+Показать:
+- дата и время;
+- клиент;
+- MikroTik;
+- действие;
+- старый статус;
+- новый статус;
+- результат MikroTik;
+- ошибка, если есть.
+
+Добавить фильтр:
+- action;
+- client;
+- date.
+
+17. Синхронизация с MikroTik
+
+URL:
+/admin/sync
+
+Функции:
+- кнопка Sync with MikroTik;
+- программа проверяет всех клиентов в базе;
+- все клиенты со status=1 должны быть в allowed_clients;
+- все клиенты со status=0, 3, 4 должны быть удалены из allowed_clients;
+- показать результат:
+  - сколько добавлено;
+  - сколько удалено;
+  - сколько уже было правильно;
+  - какие ошибки возникли.
+
+18. Настройки
+
+URL:
+/admin/settings
+
+Показать:
+- название приложения;
+- DATABASE_URL без пароля;
+- активный MikroTik;
+- address-list name;
+- guest network;
+- SMS provider;
+- Payment provider;
+- статус базы данных;
+- статус MikroTik API;
+- версия приложения.
+
+Пароли не показывать.
+
+ДИЗАЙН WEB-ПАНЕЛИ
+
+Использовать Bootstrap 5 или Tailwind CSS.
+
+Интерфейс должен быть простой, понятный и аккуратный.
+
+Нужны:
+- sidebar menu;
+- верхняя панель;
+- карточки статистики;
+- таблицы;
+- кнопки;
+- alert-сообщения после действий;
+- адаптивная верстка.
+
+Цвета:
+- active = зелёный;
+- inactive = красный;
+- pending_payment = жёлтый;
+- expired = серый;
+- blocked = тёмно-красный;
+- error = красный;
+- success = зелёный.
+
+REST API
+
+Кроме web-панели, нужно создать REST API для будущей интеграции с SMS, оплатой, сайтом или Telegram-ботом.
+
+Все API endpoints, кроме /health, должны требовать заголовок:
+
+X-API-Key: <API_SECRET_KEY>
+
+Endpoints:
+
+1. GET /health
+
+Проверить:
+- API работает;
+- база доступна;
+- активный MikroTik доступен или нет.
+
+Ответ:
+
+{
+  "api": "ok",
+  "database": "ok",
+  "mikrotik": "ok/error"
+}
+
+2. GET /api/clients
+
+Список клиентов.
+
+3. GET /api/clients/{id}
+
+Один клиент.
+
+4. PUT /api/clients/{id}
+
+Редактировать клиента.
+
+5. DELETE /api/clients/{id}
+
+Удалить клиента.
+Перед удалением, если он active, удалить его IP из MikroTik allowed_clients.
+
+6. POST /api/clients/{id}/activate
+
+Активировать клиента.
+
+7. POST /api/clients/{id}/deactivate
+
+Деактивировать клиента.
+
+8. POST /api/clients/{id}/block
+
+Заблокировать клиента.
+
+9. POST /api/clients/by-mac/{mac_address}/activate
+
+Активировать клиента по MAC.
+
+10. POST /api/clients/by-mac/{mac_address}/deactivate
+
+Деактивировать клиента по MAC.
+
+11. GET /api/mikrotik
+
+Список MikroTik устройств.
+
+12. POST /api/mikrotik
+
+Добавить MikroTik.
+
+13. POST /api/mikrotik/{id}/test
+
+Проверить соединение с MikroTik.
+
+14. GET /api/mikrotik/{id}/dhcp-leases
+
+Возвращает DHCP leases из MikroTik.
+
+15. GET /api/mikrotik/{id}/connected-clients
+
+Возвращает список подключенных клиентов.
+
+16. POST /api/sync/mikrotik
+
+Синхронизация базы с MikroTik.
+
+17. POST /api/payments/webhook
+
+Webhook для платёжной системы.
+
+18. POST /api/tasks/expire-clients
+
+Проверка и деактивация клиентов с истёкшим тарифом.
+
+PORTAL ROUTES
+
+Создать routes для клиентского портала:
+
+1. GET /portal
+
+Стартовая страница.
+
+2. GET /portal/phone
+
+Форма ввода телефона.
+
+3. POST /portal/send-otp
+
+Отправка SMS-кода.
+
+4. GET /portal/verify
+
+Форма проверки SMS-кода.
+
+5. POST /portal/verify-otp
+
+Проверка SMS-кода.
+
+6. GET /portal/tariffs
+
+Список тарифов.
+
+7. POST /portal/select-tariff
+
+Выбор тарифа.
+
+8. GET /portal/payment
+
+Страница оплаты.
+
+9. POST /portal/create-payment
+
+Создать платёж.
+
+10. POST /portal/mock-pay
+
+Тестовая оплата для MVP.
+
+11. GET /portal/success
+
+Успешная активация.
+
+12. GET /portal/payment-failed
+
+Ошибка оплаты.
+
+13. GET /portal/status
+
+Статус клиента.
+
+ОБРАБОТКА ОШИБОК
+
+Если MikroTik недоступен:
+- программа не должна падать;
+- web-панель должна показать ошибку;
+- REST API должен вернуть понятный JSON;
+- ошибка должна записаться в access_logs.
+
+Пример ответа:
+
+{
+  "success": false,
+  "message": "MikroTik API connection failed",
+  "details": "Connection timeout"
+}
+
+Если DHCP lease не найден:
+- показать в portal понятную ошибку:
+"Не удалось определить устройство. Переподключитесь к Wi-Fi и попробуйте снова."
+
+Если клиент уже активирован:
+- не добавлять дубликат в MikroTik;
+- вернуть success=true;
+- написать message: "Client already active".
+
+Если IP уже есть в address-list:
+- не добавлять второй раз;
+- обновить статус в базе;
+- записать лог.
+
+Если IP нет при деактивации:
+- считать операцию успешной;
+- записать лог: "IP was not found in allowed_clients".
+
+Если SMS не отправлен:
+- записать ошибку в sms_logs;
+- показать клиенту сообщение.
+
+Если оплата не прошла:
+- payment.status = failed;
+- показать клиенту страницу payment-failed.
+
+БЕЗОПАСНОСТЬ
+
+1. Админ-панель должна быть защищена логином и паролем.
+2. Пароль админа хранить в базе как hash.
+3. Пароль MikroTik не писать в коде.
+4. Все секреты через .env.
+5. REST API защищать через X-API-Key.
+6. OTP не хранить открытым текстом.
+7. В README указать, что API MikroTik нельзя открывать в интернет.
+8. Для production рекомендовать API-SSL 8729.
+9. Для production рекомендовать HTTPS для portal и admin panel.
+10. Для production рекомендовать отдельную guest Wi-Fi сеть.
+11. Для production рекомендовать firewall restriction для backend server.
+
+SYSTEMD
+
+Создать файл:
+
+systemd/wifi-access-manager.service
+
+Пример:
+
+[Unit]
+Description=WiFi Access Manager
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/wifi-access-manager
+EnvironmentFile=/opt/wifi-access-manager/.env
+ExecStart=/opt/wifi-access-manager/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+README
+
+README должен содержать:
+
+1. Описание проекта.
+2. Архитектуру работы.
+3. Схему работы клиента.
+4. Схему работы администратора.
+5. Требования к серверу.
+6. Установку на Ubuntu.
+7. Установку на CentOS.
+8. Настройку .env.
+9. Запуск вручную.
+10. Настройку systemd.
+11. Настройку MikroTik API.
+12. Настройку firewall MikroTik.
+13. Настройку guest Wi-Fi сети.
+14. Как открыть web-панель администратора.
+15. Как добавить MikroTik через web-панель.
+16. Как проверить MikroTik API.
+17. Как создать тариф.
+18. Как клиент проходит регистрацию.
+19. Как работает SMS mock provider.
+20. Как работает mock payment provider.
+21. Как активируется интернет.
+22. Как деактивируется интернет после окончания тарифа.
+23. Как проверить REST API через curl.
+24. Как сделать backup MikroTik перед применением правил.
+25. Рекомендации по безопасности.
+
+КОМАНДЫ УСТАНОВКИ ДЛЯ UBUNTU
+
+Добавить в README:
+
+apt update
+apt install python3 python3-venv python3-pip git -y
+
+cd /opt
+git clone <project-url> wifi-access-manager
+cd wifi-access-manager
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+
+cp .env.example .env
+
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+После запуска admin panel:
+
+http://SERVER_IP:8000/admin
+
+Client portal:
+
+http://SERVER_IP:8000/portal
+
+CURL ПРИМЕРЫ
+
+Проверка health:
+
+curl http://SERVER_IP:8000/health
+
+Получить клиентов:
+
+curl http://SERVER_IP:8000/api/clients \
+-H "X-API-Key: SECRET"
+
+Активировать клиента:
+
+curl -X POST http://SERVER_IP:8000/api/clients/1/activate \
+-H "X-API-Key: SECRET"
+
+Деактивировать клиента:
+
+curl -X POST http://SERVER_IP:8000/api/clients/1/deactivate \
+-H "X-API-Key: SECRET"
+
+Проверить MikroTik:
+
+curl -X POST http://SERVER_IP:8000/api/mikrotik/1/test \
+-H "X-API-Key: SECRET"
+
+Получить DHCP leases:
+
+curl http://SERVER_IP:8000/api/mikrotik/1/dhcp-leases \
+-H "X-API-Key: SECRET"
+
+Синхронизация:
+
+curl -X POST http://SERVER_IP:8000/api/sync/mikrotik \
+-H "X-API-Key: SECRET"
+
+Запустить expire clients:
+
+curl -X POST http://SERVER_IP:8000/api/tasks/expire-clients \
+-H "X-API-Key: SECRET"
+
+ВАЖНО ПО MVP
+
+Сначала реализуй минимально рабочую версию.
+
+Главное, чтобы MVP мог:
+
+1. Запускаться на Linux.
+2. Открывать admin panel.
+3. Авторизовать администратора.
+4. Добавлять MikroTik через web-панель.
+5. Проверять соединение с MikroTik через RouterOS API.
+6. Получать DHCP leases из MikroTik.
+7. Открывать client portal.
+8. Определять IP клиента через request.client.host.
+9. Получать MAC клиента из MikroTik DHCP lease.
+10. Принимать номер телефона от клиента.
+11. Создавать OTP-код.
+12. В MVP показывать OTP-код в логах или на экране для теста.
+13. Проверять OTP-код.
+14. Показывать тарифы.
+15. Давать клиенту выбрать тариф.
+16. Делать mock payment.
+17. После mock payment активировать клиента.
+18. Добавлять IP клиента в MikroTik address-list allowed_clients.
+19. Показывать клиента в admin panel.
+20. Показывать платежи в admin panel.
+21. Показывать SMS/OTP logs в admin panel.
+22. Показывать access logs в admin panel.
+23. Деактивировать клиента вручную через admin panel.
+24. Деактивировать клиента после окончания тарифа через expire task.
+25. Иметь REST API для будущих интеграций.
+26. Иметь README и systemd service.
+
+SMS, реальный электронный кошелёк, полноценный автоматический captive redirect и ограничение скорости/трафика можно сделать во втором этапе.
+
+Но архитектура должна быть готова для:
+- подключения настоящего SMS provider;
+- подключения настоящего payment provider;
+- автоматического captive portal redirect;
+- ограничения скорости по тарифу;
+- ограничения трафика по тарифу;
+- нескольких MikroTik;
+- нескольких guest Wi-Fi сетей.
+
+Пожалуйста, создай полный проект:
+- структуру файлов;
+- полный код всех файлов;
+- requirements.txt;
+- .env.example;
+- README.md;
+- systemd service;
+- HTML templates для admin panel;
+- HTML templates для client portal;
+- маршруты FastAPI;
+- модели SQLAlchemy;
+- модуль MikroTik RouterOS API;
+- модуль SMS/OTP;
+- модуль payments;
+- модуль tariffs;
+- модуль expire clients;
+- web-панель управления;
+- client portal.
+
+Код должен быть чистым, понятным и готовым к запуску.
+
+
+
+
+
+Клиент подключился к Wi-Fi
+→ открыл /portal
+→ система взяла IP/MAC из MikroTik DHCP lease
+→ клиент ввёл телефон
+→ подтвердил SMS mock-код
+→ выбрал тариф
+→ нажал тестовую оплату
+→ система добавила IP в MikroTik allowed_clients
+→ интернет открылся
