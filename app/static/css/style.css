@@ -1,59 +1,107 @@
 /* ============================================================
-   WiFi Access Manager — theme + parallax UI
-   Light/dark via Bootstrap 5.3 data-bs-theme; custom glass + parallax.
+   WiFi Access Manager — theme + flowing "water" background
+   Light/dark via Bootstrap 5.3 data-bs-theme; cohesive glass UI.
    ============================================================ */
 :root {
   --accent: #6366f1;
   --accent-2: #06b6d4;
   --radius: 1rem;
-  --app-bg: #eef2fb;
-  --glass: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.65);
-  --shadow: 0 10px 30px rgba(2, 6, 23, 0.12);
+  --app-bg: #eaf0fb;
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --shadow: 0 12px 34px rgba(2, 6, 23, 0.10);
   --blob1: #6366f1;
   --blob2: #06b6d4;
   --blob3: #a855f7;
+  --sidebar-bg: linear-gradient(180deg, #1f2545 0%, #2b2a6b 100%);
+  --sb-w: 250px;
 }
 [data-bs-theme="dark"] {
-  --app-bg: #070b18;
-  --glass: rgba(17, 24, 39, 0.62);
+  --app-bg: #060a16;
+  --glass: rgba(20, 27, 46, 0.55);
+  --glass-strong: rgba(20, 27, 46, 0.78);
   --glass-border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
   --blob1: #4338ca;
   --blob2: #0e7490;
   --blob3: #7e22ce;
+  --sidebar-bg: linear-gradient(180deg, #0b1020 0%, #161343 100%);
 }
 
 html, body { min-height: 100%; }
-body {
-  background: var(--app-bg);
-  transition: background .45s ease;
+body { background: var(--app-bg); transition: background .45s ease; }
+
+/* ---------- Flowing "water" background (cohesive, not pasted) ---------- */
+.bg-parallax {
+  position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  background:
+    radial-gradient(45vmax 45vmax at 18% 22%, var(--blob1), transparent 60%),
+    radial-gradient(42vmax 42vmax at 82% 18%, var(--blob2), transparent 60%),
+    radial-gradient(48vmax 48vmax at 60% 95%, var(--blob3), transparent 62%);
+  background-size: 180% 180%;
+  background-repeat: no-repeat;
+  filter: blur(48px);
+  opacity: .34;
+  animation: waterflow 30s ease-in-out infinite;
+}
+[data-bs-theme="dark"] .bg-parallax { opacity: .5; }
+
+@keyframes waterflow {
+  0%   { background-position:   0% 50%, 100% 50%, 50% 100%; }
+  50%  { background-position: 100% 50%,   0% 50%, 50%   0%; }
+  100% { background-position:   0% 50%, 100% 50%, 50% 100%; }
 }
 
-/* ---------- Parallax animated background ---------- */
-.bg-parallax {
-  position: fixed; inset: 0; z-index: -1;
-  overflow: hidden; pointer-events: none;
-}
+/* Moving accents (parallax) layered over the flow for depth. */
 .bg-parallax .blob {
-  position: absolute; width: 44vmax; height: 44vmax;
-  border-radius: 50%; filter: blur(70px); opacity: .55;
-  will-change: transform; transition: opacity .45s ease;
+  position: absolute; width: 40vmax; height: 40vmax; border-radius: 50%;
+  filter: blur(72px); opacity: .30; will-change: transform;
 }
-.bg-parallax .b1 { background: var(--blob1); top: -12vmax; left: -8vmax; }
-.bg-parallax .b2 { background: var(--blob2); bottom: -14vmax; right: -6vmax; }
-.bg-parallax .b3 { background: var(--blob3); top: 38%; left: 55%; }
+.bg-parallax .b1 { background: var(--blob1); top: -10vmax; left: -6vmax; }
+.bg-parallax .b2 { background: var(--blob2); bottom: -12vmax; right: -4vmax; }
+.bg-parallax .b3 { background: var(--blob3); top: 45%; left: 60%; }
 [data-bs-theme="dark"] .bg-parallax .blob { opacity: .42; }
 
-/* ---------- Glass cards ---------- */
+/* Animated graphical water waves at the bottom (two layers, different speed). */
+.waves { position: fixed; left: 0; right: 0; bottom: 0; height: 42vh; z-index: -1;
+  pointer-events: none; overflow: hidden; }
+.waves::before, .waves::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 100%;
+  background-repeat: repeat-x; background-position: 0 bottom; background-size: 1440px 100%;
+}
+.waves::before {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201440%20140'%20preserveAspectRatio='none'%3E%3Cpath%20d='M0,70%20C240,20%20480,120%20720,70%20C960,20%201200,120%201440,70%20L1440,140%20L0,140%20Z'%20fill='%236aa3ff'/%3E%3C/svg%3E");
+  opacity: .22; animation: waveMove 18s linear infinite;
+}
+.waves::after {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201440%20140'%20preserveAspectRatio='none'%3E%3Cpath%20d='M0,90%20C240,130%20480,40%20720,90%20C960,130%201200,40%201440,90%20L1440,140%20L0,140%20Z'%20fill='%2306b6d4'/%3E%3C/svg%3E");
+  opacity: .16; animation: waveMove 27s linear infinite reverse;
+}
+[data-bs-theme="dark"] .waves::before { opacity: .16; }
+[data-bs-theme="dark"] .waves::after { opacity: .12; }
+
+@keyframes waveMove {
+  from { background-position-x: 0; }
+  to   { background-position-x: 1440px; }
+}
+
+/* ---------- Glass surfaces (unified language) ---------- */
 .card {
   background: var(--glass);
-  backdrop-filter: blur(13px) saturate(140%);
-  -webkit-backdrop-filter: blur(13px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
+.navbar {
+  background: var(--glass) !important;
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+.table { --bs-table-bg: transparent; }
 
 /* ---------- Buttons / accents ---------- */
 .btn-primary {
@@ -63,36 +111,35 @@ body {
 }
 a, .btn-link { --bs-link-color-rgb: 99, 102, 241; }
 
-/* ---------- Admin layout ---------- */
+/* ---------- Admin layout + collapsible sidebar ---------- */
 .app-shell { gap: 0; }
 .sidebar {
-  width: 250px; min-height: 100vh; position: sticky; top: 0;
-  background: linear-gradient(180deg, #111827 0%, #1e1b4b 100%) !important;
-  box-shadow: 4px 0 24px rgba(2, 6, 23, 0.25);
+  width: var(--sb-w); min-height: 100vh; position: sticky; top: 0; z-index: 1040;
+  background: var(--sidebar-bg) !important;
+  box-shadow: 4px 0 28px rgba(2, 6, 23, 0.28);
+  transition: margin-left .3s ease;
 }
+body.sb-collapsed .sidebar { margin-left: calc(-1 * var(--sb-w) - 10px); }
 .sidebar h5 { letter-spacing: .3px; }
 .sidebar .nav-link {
-  border-radius: .65rem; padding: .55rem .8rem; margin-bottom: .15rem;
+  border-radius: .65rem; padding: .55rem .8rem; margin-bottom: .12rem;
   transition: background .2s, transform .2s;
 }
 .sidebar .nav-link:hover { background: rgba(255, 255, 255, 0.12); transform: translateX(3px); }
-.navbar {
-  background: var(--glass) !important;
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--glass-border) !important;
-}
 
-/* ---------- Theme toggle ---------- */
-.theme-toggle {
+.sb-toggle, .theme-toggle {
   cursor: pointer; border: none; background: transparent; color: inherit;
-  font-size: 1.15rem; line-height: 1; padding: .3rem .5rem; border-radius: .6rem;
+  font-size: 1.2rem; line-height: 1; padding: .3rem .55rem; border-radius: .6rem;
   transition: background .2s, transform .2s;
 }
+.sb-toggle:hover { background: rgba(127, 127, 127, .18); }
 .theme-toggle:hover { background: rgba(127, 127, 127, .18); transform: rotate(-12deg); }
+
+.sb-backdrop { display: none; }
 
 /* ---------- Client portal ---------- */
 .portal-wrap { max-width: 470px; margin: 7vh auto; padding: 0 1rem; }
-.portal-card { border-radius: 1.5rem; }
+.portal-card { border-radius: 1.5rem; background: var(--glass-strong); }
 .portal-logo {
   width: 74px; height: 74px; line-height: 74px; margin: 0 auto; border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -105,8 +152,14 @@ a, .btn-link { --bs-link-color-rgb: 99, 102, 241; }
   -webkit-text-fill-color: transparent;
 }
 
-/* ---------- Responsive ---------- */
+/* ---------- Mobile: sidebar becomes a slide-in overlay ---------- */
 @media (max-width: 768px) {
-  .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; min-height: auto; position: static; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; height: 100vh; margin-left: calc(-1 * var(--sb-w) - 12px);
+  }
+  body:not(.sb-collapsed) .sidebar { margin-left: 0; }
+  .sb-backdrop {
+    position: fixed; inset: 0; background: rgba(2, 6, 23, .5); z-index: 1039;
+  }
+  body:not(.sb-collapsed) .sb-backdrop { display: block; }
 }

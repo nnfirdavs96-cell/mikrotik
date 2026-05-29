@@ -27,6 +27,22 @@ document.addEventListener('submit', function (e) {
     });
 })();
 
+// ---------- Collapsible sidebar ----------
+(function () {
+    window.toggleSidebar = function () {
+        const collapsed = document.body.classList.toggle('sb-collapsed');
+        try { localStorage.setItem('sb', collapsed ? '1' : '0'); } catch (e) {}
+    };
+    document.addEventListener('DOMContentLoaded', function () {
+        let saved = null;
+        try { saved = localStorage.getItem('sb'); } catch (e) {}
+        // On small screens start collapsed; on desktop respect the saved choice.
+        if (window.innerWidth < 768 || saved === '1') {
+            document.body.classList.add('sb-collapsed');
+        }
+    });
+})();
+
 // ---------- Parallax background (scroll + mouse) ----------
 (function () {
     let mx = 0, my = 0;
