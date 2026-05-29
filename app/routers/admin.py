@@ -34,6 +34,7 @@ from ..mikrotik.service import (
     get_hotspot_for_device,
 )
 from ..services import clients as clients_service
+from ..services import firewall as firewall_service
 from ..services import mikrotik_devices as devices_service
 from ..services import settings_store
 from ..services import sms as sms_service
@@ -907,6 +908,88 @@ def integrations_payment(
     settings_store.save(db, data)
     flash(request, "Настройки оплаты сохранены.", "success")
     return _redirect("/admin/integrations")
+
+
+# ---------------------------------------------------------------------------
+# Firewall helper — apply the required MikroTik rules from the UI
+# ---------------------------------------------------------------------------
+@router.get("/firewall")
+def firewall_page(
+    request: Request,
+    guest_network: Optional[str] = None,
+    server_ip: Optional[str] = None,
+    server_port: Optional[str] = None,
+    wan: Optional[str] = None,
+    allowed_list: Optional[str] = None,
+    captive: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    sip, sport = firewall_service.default_server()
+    submitted = guest_network is not None
+    params = {
+        "guest_network": guest_network or settings.DEFAULT_GUEST_NETWORK,
+        "server_ip": server_ip or sip,
+        "server_port": server_port or sport,
+        "wan": wan or "",
+        "allowed_list": allowed_list or settings.DEFAULT_ALLOWED_LIST,
+        "captive": _bool(captive) if submitted else settings.CAPTIVE_REDIRECT_ENABLED,
+    }
+    _, preview = firewall_service.build_ruleset(**params)
+    current = firewall_service.current_rules(db)
+    return render(
+        request,
+        "admin_firewall.html",
+        params=params,
+        preview=preview,
+        current=current,
+    )
+
+
+@router.post("/firewall/apply")
+def firewall_apply(
+    request: Request,
+    guest_network: str = Form(...),
+    server_ip: str = Form(...),
+    server_port: str = Form("8000"),
+    wan: str = Form(""),
+    allowed_list: str = Form("allowed_clients"),
+    captive: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    if not server_ip.strip():
+        flash(request, "Укажите IP сервера портала.", "danger")
+        return _redirect("/admin/firewall")
+    res = firewall_service.apply_ruleset(
+        db,
+        guest_network=guest_network.strip(),
+        server_ip=server_ip.strip(),
+        server_port=server_port.strip() or "8000",
+        wan=wan.strip(),
+        allowed_list=allowed_list.strip() or "allowed_clients",
+        captive=_bool(captive),
+    )
+    if res.get("success"):
+        flash(
+            request,
+            f"Правила применены: добавлено {res['added']}, пропущено {res['skipped']}, "
+            f"ошибок {len(res['errors'])}.",
+            "success" if not res["errors"] else "warning",
+        )
+    else:
+        flash(request, f"Ошибка: {res.get('details') or res.get('message')}", "danger")
+    return _redirect("/admin/firewall")
+
+
+@router.post("/firewall/remove")
+def firewall_remove(request: Request, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    res = firewall_service.remove_ruleset(db)
+    if res.get("success"):
+        flash(request, f"Удалено правил WAM: {res.get('removed', 0)}.", "info")
+    else:
+        flash(request, f"Ошибка: {res.get('details') or res.get('message')}", "danger")
+    return _redirect("/admin/firewall")
 
 
 @router.post("/integrations/test-sms")
