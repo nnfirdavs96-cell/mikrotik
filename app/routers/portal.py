@@ -202,9 +202,22 @@ def create_payment(request: Request, db: Session = Depends(get_db)):
     client.tariff_id = tariff.id
     db.commit()
 
-    payment = payments_service.create_payment(db, client, tariff)
-    log_access(db, action="create_payment", client_id=client.id)
+    payment, info = payments_service.create_payment(db, client, tariff)
+    log_access(
+        db,
+        action="create_payment",
+        client_id=client.id,
+        error_message=None if info.get("success", True) else info.get("error"),
+    )
     state["payment_id"] = payment.id
+
+    # Real gateway: send the user straight to the external payment page.
+    pay_url = info.get("payment_url")
+    if pay_url:
+        return _redirect(pay_url)
+    if payment.status == "failed":
+        flash(request, "Не удалось создать платёж. Попробуйте позже.", "danger")
+        return _redirect("/portal/payment-failed")
     return _redirect("/portal/payment")
 
 

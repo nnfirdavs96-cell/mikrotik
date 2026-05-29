@@ -20,6 +20,7 @@ from .routers import (
     api_tasks,
     portal,
 )
+from .services.scheduler import shutdown_scheduler, start_scheduler
 from .services.tariffs import seed_default_tariffs
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,7 +36,10 @@ async def lifespan(app: FastAPI):
         seed_default_tariffs(db)
     finally:
         db.close()
+    # Stage 2: start the background scheduler (auto-expire / traffic checks).
+    start_scheduler()
     yield
+    shutdown_scheduler()
 
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)
