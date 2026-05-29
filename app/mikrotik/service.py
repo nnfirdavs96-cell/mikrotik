@@ -62,6 +62,27 @@ def get_leases_for_device(device: MikroTikDevice) -> dict:
         client.close()
 
 
+def get_hotspot_for_device(device: MikroTikDevice) -> dict:
+    """Fetch hotspot hosts + active sessions as a structured dict."""
+    client = build_client(device)
+    try:
+        return {
+            "success": True,
+            "hosts": client.get_hotspot_hosts(),
+            "active": client.get_hotspot_active(),
+        }
+    except MikroTikError as exc:
+        return {
+            "success": False,
+            "message": "MikroTik API connection failed",
+            "details": str(exc),
+            "hosts": [],
+            "active": [],
+        }
+    finally:
+        client.close()
+
+
 def get_capsman_for_device(device: MikroTikDevice) -> dict:
     """Fetch CAPsMAN info (APs + connected clients) as a structured dict."""
     client = build_client(device)

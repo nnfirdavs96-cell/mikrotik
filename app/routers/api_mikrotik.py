@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import require_api_key
-from ..mikrotik.service import build_client, get_capsman_for_device
+from ..mikrotik.service import build_client, get_capsman_for_device, get_hotspot_for_device
 from ..schemas import MikroTikCreate, MikroTikOut
 from ..services import clients as clients_service
 from ..services import mikrotik_devices as devices_service
@@ -81,3 +81,9 @@ def connected_clients(device_id: int, db: Session = Depends(get_db)):
 def capsman(device_id: int, db: Session = Depends(get_db)):
     device = _get_or_404(db, device_id)
     return get_capsman_for_device(device)
+
+
+@router.get("/{device_id}/hotspot-hosts")
+def hotspot(device_id: int, db: Session = Depends(get_db)):
+    device = _get_or_404(db, device_id)
+    return get_hotspot_for_device(device)

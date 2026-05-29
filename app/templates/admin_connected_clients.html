@@ -45,4 +45,24 @@
     </tbody>
 </table>
 </div></div>
+
+{% if hotspot_active %}
+<div class="card mt-4"><div class="card-body table-responsive">
+    <h6 class="card-title">Hotspot — активные сессии ({{ hotspot_active|length }})</h6>
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Пользователь</th><th>IP</th><th>MAC</th><th>Сервер</th><th>Аптайм</th></tr></thead>
+        <tbody>
+        {% for s in hotspot_active %}
+            <tr>
+                <td>{{ s.user or '—' }}</td>
+                <td>{{ s.address or '—' }}</td>
+                <td class="small">{{ s.mac_address or '—' }}</td>
+                <td>{{ s.server or '—' }}</td>
+                <td class="small">{{ s.uptime or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div></div>
+{% endif %}
 {% endblock %}
