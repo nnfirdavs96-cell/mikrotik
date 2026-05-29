@@ -4,14 +4,12 @@ A real payment provider would POST here when a payment changes state. When the
 status is ``paid`` we mark the payment paid, activate the client and add its IP
 to MikroTik allowed_clients.
 """
-import datetime as dt
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import require_api_key
-from ..models import Payment, utcnow
+from ..models import Payment
 from ..schemas import PaymentWebhook
 from ..services import clients as clients_service
 from ..services import payments as payments_service
@@ -50,7 +48,7 @@ def payment_webhook(payload: PaymentWebhook, db: Session = Depends(get_db)):
     tariff = get_tariff(db, payment.tariff_id) if payment.tariff_id else None
     if tariff:
         client.tariff_id = tariff.id
-        client.expires_at = utcnow() + dt.timedelta(days=tariff.validity_days)
+        clients_service.extend_expiry(client, tariff)
         db.commit()
 
     result = activate_client(db, client, reason="payment")
