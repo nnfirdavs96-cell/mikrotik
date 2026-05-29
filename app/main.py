@@ -46,6 +46,35 @@ app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=li
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+# Paths that belong to the app itself and must never be captive-redirected.
+_CAPTIVE_PASSTHROUGH = (
+    "/portal", "/admin", "/api", "/health", "/static",
+    "/docs", "/openapi.json", "/redoc",
+)
+
+
+def _captive_target() -> str:
+    if settings.CAPTIVE_PORTAL_URL:
+        return settings.CAPTIVE_PORTAL_URL
+    if settings.PUBLIC_BASE_URL:
+        return settings.PUBLIC_BASE_URL.rstrip("/") + "/portal"
+    return "/portal"
+
+
+@app.middleware("http")
+async def captive_redirect(request, call_next):
+    """Redirect intercepted/foreign requests to the portal (captive behaviour).
+
+    Enabled by CAPTIVE_REDIRECT_ENABLED. App paths pass through untouched; any
+    other request (OS captive probe, foreign Host via MikroTik dst-nat) gets a
+    302 to the portal so the device shows the "Sign in to network" prompt.
+    """
+    if settings.CAPTIVE_REDIRECT_ENABLED and not request.url.path.startswith(
+        _CAPTIVE_PASSTHROUGH
+    ):
+        return RedirectResponse(url=_captive_target(), status_code=302)
+    return await call_next(request)
+
 # Routers
 app.include_router(api_health.router)
 app.include_router(admin.router)
