@@ -682,6 +682,16 @@ IP удаляется из `allowed_clients` по метке в коммента
 изменился; в списке клиентов добавлена колонка «Активность» (`last_seen`) и
 подтверждение на блокировку/удаление.
 
+Завершение частичных пунктов (Batch 4):
+- на странице «Подключенные» — кнопки **activate/deactivate/block** прямо в строке
+  зарегистрированного клиента;
+- **авто-синхронизация leases по таймеру** (`LEASE_SYNC_ENABLED`,
+  `LEASE_SYNC_INTERVAL_MINUTES`) — обновляет IP/hostname/`last_seen` по MAC;
+- **access_logs** дополнен полями `actor` (admin/portal/system), `phone`, `mac`,
+  `ip` и показывает их в админке;
+- REST-алиасы под ТЗ: `GET /api/connected-clients`,
+  `POST /api/clients/{id}/bind-device`, `POST /api/sync/mikrotik/{id}`.
+
 ### MikroTik Hotspot (интеграция, Stage 3)
 
 Доступ к интернету по-прежнему гейтится через firewall `allowed_clients`

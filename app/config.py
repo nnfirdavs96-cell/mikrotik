@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Periodic traffic-quota enforcement (reads simple-queue byte counters).
     TRAFFIC_CHECK_ENABLED: bool = False
     TRAFFIC_CHECK_INTERVAL_MINUTES: int = 15
+    # Periodic refresh of client IP/hostname/last_seen from DHCP leases (by MAC).
+    LEASE_SYNC_ENABLED: bool = False
+    LEASE_SYNC_INTERVAL_MINUTES: int = 5
 
     # ----- Stage 2: generic HTTP SMS provider -----
     # SMS_PROVIDER=mock (default) or http

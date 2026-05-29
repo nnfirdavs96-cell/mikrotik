@@ -56,3 +56,7 @@ def ensure_schema():
                 pass
 
     add_column("clients", "last_seen", "DATETIME")
+    add_column("access_logs", "phone", "VARCHAR(30)")
+    add_column("access_logs", "mac", "VARCHAR(30)")
+    add_column("access_logs", "ip", "VARCHAR(45)")
+    add_column("access_logs", "actor", "VARCHAR(20)")

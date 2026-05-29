@@ -70,3 +70,9 @@ class PaymentWebhook(BaseModel):
     provider_payment_id: Optional[str] = None
     payment_id: Optional[int] = None
     status: str = "paid"
+
+
+class BindDevice(BaseModel):
+    mac_address: Optional[str] = None
+    ip_address: Optional[str] = None
+    hostname: Optional[str] = None

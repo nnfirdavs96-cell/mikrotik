@@ -84,6 +84,10 @@ def activate_client(db: Session, client: Client, reason: str = "manual") -> dict
         mikrotik_id=device.id if device else None,
         old_status=old_status,
         new_status=STATUS_ACTIVE,
+        phone=client.phone,
+        mac=client.mac_address,
+        ip=client.ip_address,
+        actor="portal" if reason == "payment" else "admin",
         mikrotik_result=mk_result,
         error_message=mk_error,
     )
@@ -145,6 +149,10 @@ def deactivate_client(
         mikrotik_id=device.id if device else None,
         old_status=old_status,
         new_status=set_status,
+        phone=client.phone,
+        mac=client.mac_address,
+        ip=client.ip_address,
+        actor="system" if action in ("expire_client", "traffic_limit") else "admin",
         mikrotik_result=mk_result,
         error_message=mk_error,
     )
