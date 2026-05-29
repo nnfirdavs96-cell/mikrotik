@@ -11,7 +11,7 @@
 
 <div class="card"><div class="card-body table-responsive">
 <table class="table table-sm align-middle">
-    <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>DHCP статус</th><th>Тип</th><th>Зарегистрирован</th><th>Статус клиента</th></tr></thead>
+    <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>DHCP статус</th><th>Тип</th><th>Зарегистрирован</th><th>Статус клиента</th><th>Действия</th></tr></thead>
     <tbody>
     {% for l in leases %}
         <tr>
@@ -22,9 +22,25 @@
             <td>{{ 'dynamic' if l.dynamic == 'true' or l.dynamic == True else 'static' }}</td>
             <td>{% if l.registered %}<span class="badge bg-success">да</span>{% else %}<span class="badge bg-secondary">нет</span>{% endif %}</td>
             <td>{% if l.client_status is not none %}<span class="badge bg-{{ status_colors[l.client_status] }}">{{ status_labels[l.client_status] }}</span>{% else %}—{% endif %}</td>
+            <td>
+                {% if l.registered %}
+                    <a href="/admin/clients/{{ l.client_id }}/edit" class="btn btn-sm btn-outline-primary">Клиент #{{ l.client_id }}</a>
+                {% elif l.mac_address %}
+                    <form method="post" action="/admin/connected-clients/bind" class="d-flex gap-1">
+                        <input type="hidden" name="mac_address" value="{{ l.mac_address }}">
+                        <input type="hidden" name="ip_address" value="{{ l.address }}">
+                        <input type="hidden" name="hostname" value="{{ l.hostname or '' }}">
+                        <select name="client_id" class="form-select form-select-sm" style="min-width:150px" required>
+                            <option value="">привязать к клиенту…</option>
+                            {% for c in clients %}<option value="{{ c.id }}">#{{ c.id }} · {{ c.phone }}</option>{% endfor %}
+                        </select>
+                        <button class="btn btn-sm btn-outline-success">OK</button>
+                    </form>
+                {% else %}—{% endif %}
+            </td>
         </tr>
     {% else %}
-        <tr><td colspan="7" class="text-muted">Нет данных</td></tr>
+        <tr><td colspan="8" class="text-muted">Нет данных</td></tr>
     {% endfor %}
     </tbody>
 </table>

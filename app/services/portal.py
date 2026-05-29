@@ -30,12 +30,13 @@ def resolve_device_info(db: Session, ip_address: Optional[str]) -> dict:
     flow is decided by the PORTAL_REQUIRE_LEASE setting.
     """
     info = {
-        "ip": ip_address,
+        "ip": None,            # client IP — set ONLY when a real lease is found
         "mac": None,
         "hostname": None,
         "mikrotik_id": None,
         "found": False,
         "message": None,
+        "request_ip": ip_address,  # raw IP seen by the server (for logging)
     }
 
     device = get_active_device(db)
@@ -48,10 +49,22 @@ def resolve_device_info(db: Session, ip_address: Optional[str]) -> dict:
         info["message"] = "Could not determine client IP address"
         return info
 
+    # CRITICAL: the request IP must be the client's, never the router's. If we
+    # see the MikroTik's own IP, traffic guest->portal is being masqueraded.
+    # Do NOT store it as the client IP — ask to bind the device manually.
+    if ip_address == device.host:
+        info["message"] = (
+            "Виден IP роутера, а не клиента. Уберите masquerade для трафика "
+            "гость→портал (или используйте Hotspot). Устройство можно привязать "
+            "вручную из списка DHCP leases в админке."
+        )
+        return info
+
     mk_client = build_client(device)
     try:
         lease = mk_client.find_lease_by_ip(ip_address)
         if lease:
+            info["ip"] = lease.get("address") or ip_address
             info["mac"] = lease.get("mac_address")
             info["hostname"] = lease.get("hostname")
             info["found"] = True
