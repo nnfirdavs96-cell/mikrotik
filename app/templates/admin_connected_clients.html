@@ -24,7 +24,12 @@
             <td>{% if l.client_status is not none %}<span class="badge bg-{{ status_colors[l.client_status] }}">{{ status_labels[l.client_status] }}</span>{% else %}—{% endif %}</td>
             <td>
                 {% if l.registered %}
-                    <a href="/admin/clients/{{ l.client_id }}/edit" class="btn btn-sm btn-outline-primary">Клиент #{{ l.client_id }}</a>
+                    <div class="d-flex gap-1 flex-wrap">
+                        <a href="/admin/clients/{{ l.client_id }}/edit" class="btn btn-sm btn-outline-primary" title="Клиент #{{ l.client_id }} — Edit"><i class="bi bi-pencil"></i></a>
+                        <form class="d-inline" method="post" action="/admin/clients/{{ l.client_id }}/activate"><button class="btn btn-sm btn-outline-success" title="Activate"><i class="bi bi-play"></i></button></form>
+                        <form class="d-inline" method="post" action="/admin/clients/{{ l.client_id }}/deactivate"><button class="btn btn-sm btn-outline-danger" title="Deactivate"><i class="bi bi-pause"></i></button></form>
+                        <form class="d-inline js-confirm" method="post" action="/admin/clients/{{ l.client_id }}/block"><button class="btn btn-sm btn-outline-dark" title="Block"><i class="bi bi-slash-circle"></i></button></form>
+                    </div>
                 {% elif l.mac_address %}
                     <form method="post" action="/admin/connected-clients/bind" class="d-flex gap-1">
                         <input type="hidden" name="mac_address" value="{{ l.mac_address }}">

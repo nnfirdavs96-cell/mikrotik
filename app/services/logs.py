@@ -15,6 +15,10 @@ def log_access(
     new_status: Optional[int] = None,
     mikrotik_result: Optional[str] = None,
     error_message: Optional[str] = None,
+    phone: Optional[str] = None,
+    mac: Optional[str] = None,
+    ip: Optional[str] = None,
+    actor: Optional[str] = None,
 ) -> models.AccessLog:
     entry = models.AccessLog(
         action=action,
@@ -22,6 +26,10 @@ def log_access(
         mikrotik_id=mikrotik_id,
         old_status=old_status,
         new_status=new_status,
+        phone=phone,
+        mac=mac,
+        ip=ip,
+        actor=actor,
         mikrotik_result=mikrotik_result,
         error_message=error_message,
     )

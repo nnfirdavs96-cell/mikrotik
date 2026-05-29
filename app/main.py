@@ -13,6 +13,7 @@ from .database import SessionLocal, init_db
 from .routers import (
     admin,
     api_clients,
+    api_compat,
     api_health,
     api_mikrotik,
     api_payments,
@@ -84,6 +85,7 @@ app.include_router(api_mikrotik.router)
 app.include_router(api_sync.router)
 app.include_router(api_payments.router)
 app.include_router(api_tasks.router)
+app.include_router(api_compat.router)
 
 
 @app.get("/")

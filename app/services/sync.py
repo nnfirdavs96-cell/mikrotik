@@ -1,4 +1,6 @@
 """Synchronise the database with the MikroTik allowed_clients list."""
+import datetime as dt
+
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -6,6 +8,49 @@ from ..config import settings
 from ..mikrotik.client import MikroTikError
 from ..mikrotik.service import build_client, get_active_device
 from .logs import log_access
+
+
+def refresh_connected(db: Session) -> dict:
+    """Update known clients' IP/hostname/last_seen from current DHCP leases.
+
+    Merges by MAC: for each lease with a MAC that matches a client, refresh its
+    current_ip / hostname / last_seen. Used by the periodic scheduler and the
+    Refresh button.
+    """
+    device = get_active_device(db)
+    if device is None:
+        return {"success": False, "message": "No active MikroTik device configured"}
+
+    mk_client = build_client(device)
+    try:
+        leases = mk_client.get_dhcp_leases()
+    except MikroTikError as exc:
+        return {"success": False, "message": "MikroTik API connection failed",
+                "details": str(exc)}
+    finally:
+        mk_client.close()
+
+    now = dt.datetime.utcnow()
+    updated = 0
+    for lease in leases:
+        mac = lease.get("mac_address")
+        if not mac:
+            continue
+        client = (
+            db.query(models.Client)
+            .filter(models.Client.mac_address.ilike(mac))
+            .first()
+        )
+        if client is None:
+            continue
+        if lease.get("address"):
+            client.ip_address = lease["address"]
+        if lease.get("hostname"):
+            client.hostname = lease["hostname"]
+        client.last_seen = now
+        updated += 1
+    db.commit()
+    return {"success": True, "updated": updated, "leases": len(leases)}
 
 
 def sync_with_mikrotik(db: Session) -> dict:

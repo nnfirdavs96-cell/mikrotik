@@ -11,6 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ..config import settings
 from ..database import SessionLocal
 from .expire import expire_clients
+from .sync import refresh_connected
 from .traffic import enforce_traffic_quotas
 
 logger = logging.getLogger("wam.scheduler")
@@ -42,6 +43,18 @@ def _run_traffic() -> None:
         db.close()
 
 
+def _run_lease_sync() -> None:
+    db = SessionLocal()
+    try:
+        res = refresh_connected(db)
+        if res.get("updated"):
+            logger.info("lease sync: %s", res)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("lease sync job failed: %s", exc)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler | None:
     global _scheduler
     if not settings.SCHEDULER_ENABLED:
@@ -64,6 +77,14 @@ def start_scheduler() -> BackgroundScheduler | None:
             "interval",
             minutes=max(1, settings.TRAFFIC_CHECK_INTERVAL_MINUTES),
             id="traffic_check",
+            replace_existing=True,
+        )
+    if settings.LEASE_SYNC_ENABLED:
+        sched.add_job(
+            _run_lease_sync,
+            "interval",
+            minutes=max(1, settings.LEASE_SYNC_INTERVAL_MINUTES),
+            id="lease_sync",
             replace_existing=True,
         )
     sched.start()

@@ -196,6 +196,11 @@ class AccessLog(Base):
     action = Column(String(50), index=True)
     old_status = Column(Integer, nullable=True)
     new_status = Column(Integer, nullable=True)
+    # Snapshot of client identity + who triggered the action (admin/portal/system).
+    phone = Column(String(30), nullable=True)
+    mac = Column(String(30), nullable=True)
+    ip = Column(String(45), nullable=True)
+    actor = Column(String(20), nullable=True)
     mikrotik_result = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
