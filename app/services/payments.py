@@ -1,8 +1,9 @@
 """Payment provider abstraction + payment record helpers.
 
-The MockPaymentProvider marks a payment as paid immediately when the client
-presses the test-payment button. A real e-wallet integration would implement
-PaymentProvider and be registered in get_payment_provider().
+Provider and credentials come from the runtime settings store (admin panel)
+with .env as fallback. MockPaymentProvider marks paid via the test button;
+HTTPPaymentProvider creates a payment and returns a redirect URL, confirmed
+later via POST /api/payments/webhook.
 """
 from typing import Optional
 
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..config import settings
 from ..models import utcnow
+from . import settings_store
 
 
 class PaymentProvider:
@@ -31,7 +33,6 @@ class MockPaymentProvider(PaymentProvider):
     name = "mock"
 
     def create_payment(self, client_id: int, tariff_id: int, amount: float) -> dict:
-        # No external call for the mock provider.
         return {"success": True, "provider_payment_id": None, "status": "pending"}
 
     def check_payment_status(self, payment_id) -> dict:
@@ -42,21 +43,20 @@ class MockPaymentProvider(PaymentProvider):
 
 
 class HTTPPaymentProvider(PaymentProvider):
-    """Generic HTTP payment gateway.
-
-    Creates a payment via PAYMENT_API_URL and expects the response JSON to
-    contain a redirect URL (PAYMENT_PAY_URL_FIELD) and a payment id
-    (PAYMENT_ID_FIELD). The gateway later confirms via POST /api/payments/
-    webhook and redirects the user to PAYMENT_RETURN_URL.
-    """
+    """Generic HTTP payment gateway configured via the settings store / .env."""
 
     name = "http"
 
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+
     def _base(self) -> str:
-        return settings.PUBLIC_BASE_URL.rstrip("/")
+        return (self.cfg.get("PUBLIC_BASE_URL") or "").rstrip("/")
 
     def create_payment(self, client_id: int, tariff_id: int, amount: float) -> dict:
-        if not settings.PAYMENT_API_URL:
+        cfg = self.cfg
+        url = cfg.get("PAYMENT_API_URL")
+        if not url:
             return {"success": False, "status": "failed",
                     "error": "PAYMENT_API_URL is not configured"}
 
@@ -65,18 +65,20 @@ class HTTPPaymentProvider(PaymentProvider):
             "currency": settings.DEFAULT_CURRENCY,
             "client_id": client_id,
             "tariff_id": tariff_id,
-            "return_url": settings.PAYMENT_RETURN_URL or f"{self._base()}/portal/success",
-            "callback_url": settings.PAYMENT_CALLBACK_URL or f"{self._base()}/api/payments/webhook",
+            "return_url": cfg.get("PAYMENT_RETURN_URL") or f"{self._base()}/portal/success",
+            "callback_url": cfg.get("PAYMENT_CALLBACK_URL") or f"{self._base()}/api/payments/webhook",
         }
         headers = {}
-        if settings.PAYMENT_API_KEY:
-            prefix = settings.PAYMENT_API_AUTH_PREFIX
+        if cfg.get("PAYMENT_API_KEY"):
+            prefix = cfg.get("PAYMENT_API_AUTH_PREFIX", "")
             if prefix and not prefix.endswith(" "):
                 prefix += " "
-            headers[settings.PAYMENT_API_AUTH_HEADER] = f"{prefix}{settings.PAYMENT_API_KEY}"
+            headers[cfg.get("PAYMENT_API_AUTH_HEADER", "Authorization")] = (
+                f"{prefix}{cfg['PAYMENT_API_KEY']}"
+            )
         try:
             with httpx.Client(timeout=20) as client:
-                resp = client.post(settings.PAYMENT_API_URL, json=payload, headers=headers)
+                resp = client.post(url, json=payload, headers=headers)
             if not (200 <= resp.status_code < 300):
                 return {"success": False, "status": "failed",
                         "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
@@ -84,12 +86,12 @@ class HTTPPaymentProvider(PaymentProvider):
                 data = resp.json()
             except Exception:  # noqa: BLE001
                 data = {}
-            pid = data.get(settings.PAYMENT_ID_FIELD)
+            pid = data.get(cfg.get("PAYMENT_ID_FIELD", "id"))
             return {
                 "success": True,
                 "status": "pending",
                 "provider_payment_id": str(pid) if pid is not None else None,
-                "payment_url": data.get(settings.PAYMENT_PAY_URL_FIELD),
+                "payment_url": data.get(cfg.get("PAYMENT_PAY_URL_FIELD", "payment_url")),
             }
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "status": "failed", "error": str(exc)}
@@ -101,26 +103,20 @@ class HTTPPaymentProvider(PaymentProvider):
         return {"success": True, "status": payload.get("status", "paid")}
 
 
-_PROVIDERS = {
-    "mock": MockPaymentProvider,
-    "http": HTTPPaymentProvider,
-}
+def get_payment_provider(cfg: dict) -> PaymentProvider:
+    if cfg.get("PAYMENT_PROVIDER", "mock") == "http":
+        return HTTPPaymentProvider(cfg)
+    return MockPaymentProvider()
 
 
-def get_payment_provider() -> PaymentProvider:
-    cls = _PROVIDERS.get(settings.PAYMENT_PROVIDER, MockPaymentProvider)
-    return cls()
-
-
-def create_payment(
-    db: Session, client: models.Client, tariff: models.Tariff
-):
+def create_payment(db: Session, client: models.Client, tariff: models.Tariff):
     """Create a payment record. Returns (payment, info).
 
     ``info`` carries provider extras such as ``payment_url`` (for real
     gateways) so the portal can redirect the user to the payment page.
     """
-    provider = get_payment_provider()
+    cfg = settings_store.effective(db)
+    provider = get_payment_provider(cfg)
     info = provider.create_payment(client.id, tariff.id, tariff.price)
     payment = models.Payment(
         client_id=client.id,

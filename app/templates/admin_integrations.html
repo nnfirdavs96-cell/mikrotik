@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Интеграции{% endblock %}
+{% block heading %}Интеграции (SMS и оплата){% endblock %}
+{% block content %}
+<p class="text-muted">Настройки сохраняются в базе и переопределяют <code>.env</code>. Секретные ключи не отображаются — оставьте поле пустым, чтобы не менять.</p>
+
+<div class="row g-4">
+<!-- SMS -->
+<div class="col-lg-6">
+<div class="card"><div class="card-body">
+    <h6 class="card-title">SMS-провайдер
+        <span class="badge bg-{{ 'success' if cfg.SMS_PROVIDER=='http' else 'secondary' }}">{{ cfg.SMS_PROVIDER }}</span>
+    </h6>
+    <form method="post" action="/admin/integrations/sms" class="row g-2">
+        <div class="col-12">
+            <label class="form-label">Провайдер</label>
+            <select name="SMS_PROVIDER" class="form-select">
+                <option value="mock" {% if cfg.SMS_PROVIDER=='mock' %}selected{% endif %}>mock (код в логах)</option>
+                <option value="http" {% if cfg.SMS_PROVIDER=='http' %}selected{% endif %}>http (реальный шлюз)</option>
+            </select>
+        </div>
+        <div class="col-12"><label class="form-label">API URL</label>
+            <input name="SMS_API_URL" value="{{ cfg.SMS_API_URL }}" class="form-control" placeholder="https://sms.example/send"></div>
+        <div class="col-12"><label class="form-label">API Key {% if secret_set.SMS_API_KEY %}<span class="badge bg-success">задан</span>{% endif %}</label>
+            <input name="SMS_API_KEY" type="password" class="form-control" placeholder="оставьте пустым чтобы не менять"></div>
+        <div class="col-6"><label class="form-label">Метод</label>
+            <select name="SMS_API_METHOD" class="form-select">
+                <option {% if cfg.SMS_API_METHOD=='POST' %}selected{% endif %}>POST</option>
+                <option {% if cfg.SMS_API_METHOD=='GET' %}selected{% endif %}>GET</option>
+            </select></div>
+        <div class="col-6 d-flex align-items-end">
+            <div class="form-check">
+                <input type="checkbox" name="SMS_JSON_BODY" class="form-check-input" id="sjb" {{ 'checked' if sms_json_body else '' }}>
+                <label class="form-check-label" for="sjb">JSON body (POST)</label>
+            </div>
+        </div>
+        <div class="col-6"><label class="form-label">Auth header</label>
+            <input name="SMS_API_AUTH_HEADER" value="{{ cfg.SMS_API_AUTH_HEADER }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Auth prefix</label>
+            <input name="SMS_API_AUTH_PREFIX" value="{{ cfg.SMS_API_AUTH_PREFIX }}" class="form-control" placeholder="Bearer"></div>
+        <div class="col-6"><label class="form-label">Поле телефона</label>
+            <input name="SMS_PHONE_PARAM" value="{{ cfg.SMS_PHONE_PARAM }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Поле текста</label>
+            <input name="SMS_TEXT_PARAM" value="{{ cfg.SMS_TEXT_PARAM }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Отправитель (from)</label>
+            <input name="SMS_SENDER" value="{{ cfg.SMS_SENDER }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Поле отправителя</label>
+            <input name="SMS_SENDER_PARAM" value="{{ cfg.SMS_SENDER_PARAM }}" class="form-control"></div>
+        <div class="col-12"><label class="form-label">Доп. параметры (JSON)</label>
+            <input name="SMS_EXTRA_PARAMS" value="{{ cfg.SMS_EXTRA_PARAMS }}" class="form-control" placeholder='{"unicode":1}'></div>
+        <div class="col-12"><button class="btn btn-primary">Сохранить SMS</button></div>
+    </form>
+    <hr>
+    <form method="post" action="/admin/integrations/test-sms" class="row g-2">
+        <div class="col-8"><input name="phone" class="form-control" placeholder="+992 90 000 00 00" required></div>
+        <div class="col-4"><button class="btn btn-outline-secondary w-100">Тест SMS</button></div>
+    </form>
+</div></div>
+</div>
+
+<!-- Payment -->
+<div class="col-lg-6">
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Платёжный шлюз
+        <span class="badge bg-{{ 'success' if cfg.PAYMENT_PROVIDER=='http' else 'secondary' }}">{{ cfg.PAYMENT_PROVIDER }}</span>
+    </h6>
+    <form method="post" action="/admin/integrations/payment" class="row g-2">
+        <div class="col-12">
+            <label class="form-label">Провайдер</label>
+            <select name="PAYMENT_PROVIDER" class="form-select">
+                <option value="mock" {% if cfg.PAYMENT_PROVIDER=='mock' %}selected{% endif %}>mock (тестовая оплата)</option>
+                <option value="http" {% if cfg.PAYMENT_PROVIDER=='http' %}selected{% endif %}>http (реальный шлюз)</option>
+            </select>
+        </div>
+        <div class="col-12"><label class="form-label">API URL (создание платежа)</label>
+            <input name="PAYMENT_API_URL" value="{{ cfg.PAYMENT_API_URL }}" class="form-control" placeholder="https://pay.example/create"></div>
+        <div class="col-12"><label class="form-label">API Key {% if secret_set.PAYMENT_API_KEY %}<span class="badge bg-success">задан</span>{% endif %}</label>
+            <input name="PAYMENT_API_KEY" type="password" class="form-control" placeholder="оставьте пустым чтобы не менять"></div>
+        <div class="col-6"><label class="form-label">Auth header</label>
+            <input name="PAYMENT_API_AUTH_HEADER" value="{{ cfg.PAYMENT_API_AUTH_HEADER }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Auth prefix</label>
+            <input name="PAYMENT_API_AUTH_PREFIX" value="{{ cfg.PAYMENT_API_AUTH_PREFIX }}" class="form-control"></div>
+        <div class="col-12"><label class="form-label">Public base URL (для return/callback)</label>
+            <input name="PUBLIC_BASE_URL" value="{{ cfg.PUBLIC_BASE_URL }}" class="form-control" placeholder="https://wifi.example"></div>
+        <div class="col-6"><label class="form-label">Return URL</label>
+            <input name="PAYMENT_RETURN_URL" value="{{ cfg.PAYMENT_RETURN_URL }}" class="form-control" placeholder="(авто)"></div>
+        <div class="col-6"><label class="form-label">Callback URL</label>
+            <input name="PAYMENT_CALLBACK_URL" value="{{ cfg.PAYMENT_CALLBACK_URL }}" class="form-control" placeholder="(авто)"></div>
+        <div class="col-6"><label class="form-label">Поле URL оплаты</label>
+            <input name="PAYMENT_PAY_URL_FIELD" value="{{ cfg.PAYMENT_PAY_URL_FIELD }}" class="form-control"></div>
+        <div class="col-6"><label class="form-label">Поле ID платежа</label>
+            <input name="PAYMENT_ID_FIELD" value="{{ cfg.PAYMENT_ID_FIELD }}" class="form-control"></div>
+        <div class="col-12"><button class="btn btn-primary">Сохранить оплату</button></div>
+    </form>
+    <p class="text-muted small mt-2 mb-0">Webhook шлюза должен слать <code>POST /api/payments/webhook</code> с заголовком <code>X-API-Key</code>.</p>
+</div></div>
+</div>
+</div>
+{% endblock %}

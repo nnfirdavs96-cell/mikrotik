@@ -197,3 +197,17 @@ class AccessLog(Base):
     mikrotik_result = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+
+class AppSetting(Base):
+    """Key-value runtime settings (overrides .env), edited from the admin panel.
+
+    Used for integration config (SMS / payment providers) so credentials can be
+    set through the UI instead of editing .env and restarting.
+    """
+
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

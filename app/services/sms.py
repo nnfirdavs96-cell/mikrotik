@@ -1,18 +1,18 @@
 """SMS provider abstraction.
 
-For the MVP a MockSMSProvider just records the message in sms_logs and prints
-it to the console. The architecture lets you plug a real provider later by
-implementing SMSProvider.send_sms and registering it in get_sms_provider().
+Provider and credentials come from the runtime settings store (admin panel)
+with .env as fallback. MockSMSProvider just logs; HTTPSMSProvider posts to a
+configurable REST gateway.
 """
 import json
 import logging
-from typing import Optional
 
 import httpx
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..config import settings
+from . import settings_store
 
 logger = logging.getLogger("wam.sms")
 
@@ -32,56 +32,54 @@ class MockSMSProvider(SMSProvider):
     name = "mock"
 
     def send_sms(self, phone: str, message: str) -> dict:
-        # In the MVP the "delivery" is just a log line.
         logger.info("[MOCK SMS] to=%s message=%s", phone, message)
         return {"success": True, "provider": self.name, "message": message}
 
 
 class HTTPSMSProvider(SMSProvider):
-    """Generic HTTP SMS gateway driven entirely by .env settings.
-
-    Works with most REST SMS APIs: configure SMS_API_URL, SMS_API_KEY and the
-    field names (SMS_PHONE_PARAM / SMS_TEXT_PARAM / SMS_SENDER_PARAM). Use
-    SMS_API_METHOD to pick GET or POST and SMS_JSON_BODY for JSON vs form.
-    """
+    """Generic HTTP SMS gateway configured via the settings store / .env."""
 
     name = "http"
 
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+
     def send_sms(self, phone: str, message: str) -> dict:
-        if not settings.SMS_API_URL:
-            return {
-                "success": False,
-                "provider": self.name,
-                "error": "SMS_API_URL is not configured",
-            }
+        cfg = self.cfg
+        url = cfg.get("SMS_API_URL")
+        if not url:
+            return {"success": False, "provider": self.name,
+                    "error": "SMS_API_URL is not configured"}
 
         params = {
-            settings.SMS_PHONE_PARAM: phone,
-            settings.SMS_TEXT_PARAM: message,
+            cfg.get("SMS_PHONE_PARAM", "phone"): phone,
+            cfg.get("SMS_TEXT_PARAM", "text"): message,
         }
-        if settings.SMS_SENDER:
-            params[settings.SMS_SENDER_PARAM] = settings.SMS_SENDER
-        if settings.SMS_EXTRA_PARAMS:
+        if cfg.get("SMS_SENDER"):
+            params[cfg.get("SMS_SENDER_PARAM", "from")] = cfg["SMS_SENDER"]
+        if cfg.get("SMS_EXTRA_PARAMS"):
             try:
-                params.update(json.loads(settings.SMS_EXTRA_PARAMS))
+                params.update(json.loads(cfg["SMS_EXTRA_PARAMS"]))
             except Exception:  # noqa: BLE001
                 logger.warning("SMS_EXTRA_PARAMS is not valid JSON; ignored")
 
         headers = {}
-        if settings.SMS_API_KEY:
-            prefix = settings.SMS_API_AUTH_PREFIX
+        if cfg.get("SMS_API_KEY"):
+            prefix = cfg.get("SMS_API_AUTH_PREFIX", "")
             if prefix and not prefix.endswith(" "):
                 prefix += " "
-            headers[settings.SMS_API_AUTH_HEADER] = f"{prefix}{settings.SMS_API_KEY}"
+            headers[cfg.get("SMS_API_AUTH_HEADER", "Authorization")] = (
+                f"{prefix}{cfg['SMS_API_KEY']}"
+            )
 
         try:
             with httpx.Client(timeout=15) as client:
-                if settings.SMS_API_METHOD.upper() == "GET":
-                    resp = client.get(settings.SMS_API_URL, params=params, headers=headers)
-                elif settings.SMS_JSON_BODY:
-                    resp = client.post(settings.SMS_API_URL, json=params, headers=headers)
+                if cfg.get("SMS_API_METHOD", "POST").upper() == "GET":
+                    resp = client.get(url, params=params, headers=headers)
+                elif settings_store.as_bool(cfg.get("SMS_JSON_BODY", "true")):
+                    resp = client.post(url, json=params, headers=headers)
                 else:
-                    resp = client.post(settings.SMS_API_URL, data=params, headers=headers)
+                    resp = client.post(url, data=params, headers=headers)
             ok = 200 <= resp.status_code < 300
             return {
                 "success": ok,
@@ -93,20 +91,16 @@ class HTTPSMSProvider(SMSProvider):
             return {"success": False, "provider": self.name, "error": str(exc)}
 
 
-_PROVIDERS = {
-    "mock": MockSMSProvider,
-    "http": HTTPSMSProvider,
-}
+def get_sms_provider(cfg: dict) -> SMSProvider:
+    if cfg.get("SMS_PROVIDER", "mock") == "http":
+        return HTTPSMSProvider(cfg)
+    return MockSMSProvider()
 
 
-def get_sms_provider() -> SMSProvider:
-    cls = _PROVIDERS.get(settings.SMS_PROVIDER, MockSMSProvider)
-    return cls()
-
-
-def send_sms(db: Session, phone: str, message: str, log_otp_code: Optional[str] = None):
-    """Send an SMS, persisting the attempt to sms_logs."""
-    provider = get_sms_provider()
+def send_sms(db: Session, phone: str, message: str):
+    """Send an SMS using the configured provider, logging to sms_logs."""
+    cfg = settings_store.effective(db)
+    provider = get_sms_provider(cfg)
     error_message = None
     try:
         result = provider.send_sms(phone, message)
