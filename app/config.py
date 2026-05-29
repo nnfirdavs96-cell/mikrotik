@@ -89,6 +89,14 @@ class Settings(BaseSettings):
     # Public base URL of this app (used to build return/callback URLs).
     PUBLIC_BASE_URL: str = ""
 
+    # ----- Stage 3: captive portal redirect -----
+    # When enabled, any request that is not an app path (foreign Host / unknown
+    # path, e.g. intercepted by MikroTik dst-nat or OS captive probes) is
+    # redirected to the portal so the "Sign in to network" popup appears.
+    CAPTIVE_REDIRECT_ENABLED: bool = False
+    # Absolute URL to redirect to. If empty, PUBLIC_BASE_URL + /portal is used.
+    CAPTIVE_PORTAL_URL: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
