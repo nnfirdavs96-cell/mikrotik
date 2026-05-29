@@ -50,6 +50,11 @@ def send_otp(request: Request, phone: str = Form(...), db: Session = Depends(get
         flash(request, "Введите номер телефона.", "danger")
         return _redirect("/portal/phone")
 
+    ok, msg = otp_service.can_request_otp(db, phone)
+    if not ok:
+        flash(request, msg, "warning")
+        return _redirect("/portal/phone")
+
     # Determine the client's device from its IP via the MikroTik DHCP lease.
     client_ip = portal_service.get_client_ip(request)
     info = portal_service.resolve_device_info(db, client_ip)
@@ -300,6 +305,11 @@ def cabinet_login(request: Request, phone: str = Form(...), db: Session = Depend
     if not client:
         flash(request, "Клиент с таким номером не найден. Пройдите регистрацию.", "warning")
         return _redirect("/portal/phone")
+
+    ok, msg = otp_service.can_request_otp(db, phone)
+    if not ok:
+        flash(request, msg, "warning")
+        return _redirect("/portal/login")
 
     # Refresh IP/MAC from the current DHCP lease if the router is reachable.
     info = portal_service.resolve_device_info(db, portal_service.get_client_ip(request))

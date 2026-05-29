@@ -111,17 +111,21 @@ def deactivate_client(
 
     if device is None:
         mk_error = "No active MikroTik device configured"
-    elif not client.ip_address:
-        mk_ok = True
-        mk_result = "Client has no IP address; nothing to remove"
     else:
         mk_client = build_client(device)
         try:
-            res = mk_client.remove_ip_from_allowed_list(
-                client.ip_address, settings.DEFAULT_ALLOWED_LIST
+            # Remove by client_id (robust even if the IP changed)...
+            res = mk_client.remove_allowed_by_client_id(
+                client.id, settings.DEFAULT_ALLOWED_LIST
             )
+            removed = res.get("removed", 0)
+            # ...and also by current IP as a safety net (skip the router IP).
+            if client.ip_address and client.ip_address != device.host:
+                mk_client.remove_ip_from_allowed_list(
+                    client.ip_address, settings.DEFAULT_ALLOWED_LIST
+                )
             mk_ok = True
-            mk_result = res.get("message")
+            mk_result = f"removed {removed} address-list entry(ies)"
             # Stage 2: remove the per-client speed-limit queue.
             if settings.APPLY_QUEUES:
                 mk_client.remove_simple_queue(f"{settings.QUEUE_PREFIX}-{client.id}")
