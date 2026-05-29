@@ -13,6 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+from .crypto import EncryptedString
 from .database import Base
 
 
@@ -74,9 +75,8 @@ class MikroTikDevice(Base):
     host = Column(String(120), nullable=False)
     port = Column(Integer, default=8728)
     username = Column(String(120), nullable=False)
-    # For the MVP the password is stored as-is. See README security notes for
-    # production (encrypt at rest / use a secrets manager).
-    password = Column(String(255), nullable=False)
+    # Encrypted at rest (Fernet). Legacy plaintext values still decrypt as-is.
+    password = Column(EncryptedString(512), nullable=False)
     use_ssl = Column(Boolean, default=False)
     is_active = Column(Boolean, default=False)
     comment = Column(Text, nullable=True)

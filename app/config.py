@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./wifi_access.db"
     SECRET_KEY: str = "change_this_secret_key"
     API_SECRET_KEY: str = "change_this_api_key"
+    # Fernet key for encrypting MikroTik passwords at rest. If empty, a key is
+    # derived from SECRET_KEY. Generate a dedicated one with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    ENCRYPTION_KEY: str = ""
 
     # First admin (seeded on first run)
     ADMIN_USERNAME: str = "admin"
