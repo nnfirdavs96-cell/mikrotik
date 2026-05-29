@@ -1,41 +1,112 @@
-/* WiFi Access Manager styles */
+/* ============================================================
+   WiFi Access Manager — theme + parallax UI
+   Light/dark via Bootstrap 5.3 data-bs-theme; custom glass + parallax.
+   ============================================================ */
+:root {
+  --accent: #6366f1;
+  --accent-2: #06b6d4;
+  --radius: 1rem;
+  --app-bg: #eef2fb;
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --shadow: 0 10px 30px rgba(2, 6, 23, 0.12);
+  --blob1: #6366f1;
+  --blob2: #06b6d4;
+  --blob3: #a855f7;
+}
+[data-bs-theme="dark"] {
+  --app-bg: #070b18;
+  --glass: rgba(17, 24, 39, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --blob1: #4338ca;
+  --blob2: #0e7490;
+  --blob3: #7e22ce;
+}
+
+html, body { min-height: 100%; }
+body {
+  background: var(--app-bg);
+  transition: background .45s ease;
+}
+
+/* ---------- Parallax animated background ---------- */
+.bg-parallax {
+  position: fixed; inset: 0; z-index: -1;
+  overflow: hidden; pointer-events: none;
+}
+.bg-parallax .blob {
+  position: absolute; width: 44vmax; height: 44vmax;
+  border-radius: 50%; filter: blur(70px); opacity: .55;
+  will-change: transform; transition: opacity .45s ease;
+}
+.bg-parallax .b1 { background: var(--blob1); top: -12vmax; left: -8vmax; }
+.bg-parallax .b2 { background: var(--blob2); bottom: -14vmax; right: -6vmax; }
+.bg-parallax .b3 { background: var(--blob3); top: 38%; left: 55%; }
+[data-bs-theme="dark"] .bg-parallax .blob { opacity: .42; }
+
+/* ---------- Glass cards ---------- */
+.card {
+  background: var(--glass);
+  backdrop-filter: blur(13px) saturate(140%);
+  -webkit-backdrop-filter: blur(13px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Buttons / accents ---------- */
+.btn-primary {
+  --bs-btn-bg: var(--accent); --bs-btn-border-color: var(--accent);
+  --bs-btn-hover-bg: #4f46e5; --bs-btn-hover-border-color: #4f46e5;
+  --bs-btn-active-bg: #4338ca; --bs-btn-active-border-color: #4338ca;
+}
+a, .btn-link { --bs-link-color-rgb: 99, 102, 241; }
+
+/* ---------- Admin layout ---------- */
+.app-shell { gap: 0; }
 .sidebar {
-    width: 240px;
-    min-height: 100vh;
-    position: sticky;
-    top: 0;
+  width: 250px; min-height: 100vh; position: sticky; top: 0;
+  background: linear-gradient(180deg, #111827 0%, #1e1b4b 100%) !important;
+  box-shadow: 4px 0 24px rgba(2, 6, 23, 0.25);
 }
+.sidebar h5 { letter-spacing: .3px; }
 .sidebar .nav-link {
-    border-radius: .375rem;
-    padding: .5rem .75rem;
-    margin-bottom: .15rem;
+  border-radius: .65rem; padding: .55rem .8rem; margin-bottom: .15rem;
+  transition: background .2s, transform .2s;
 }
-.sidebar .nav-link:hover {
-    background-color: rgba(255, 255, 255, .1);
+.sidebar .nav-link:hover { background: rgba(255, 255, 255, 0.12); transform: translateX(3px); }
+.navbar {
+  background: var(--glass) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--glass-border) !important;
 }
 
-/* Captive portal */
-.portal-wrap {
-    max-width: 460px;
-    margin: 6vh auto;
-    padding: 0 1rem;
+/* ---------- Theme toggle ---------- */
+.theme-toggle {
+  cursor: pointer; border: none; background: transparent; color: inherit;
+  font-size: 1.15rem; line-height: 1; padding: .3rem .5rem; border-radius: .6rem;
+  transition: background .2s, transform .2s;
 }
-.portal-card {
-    border: none;
-    border-radius: 1rem;
-}
+.theme-toggle:hover { background: rgba(127, 127, 127, .18); transform: rotate(-12deg); }
+
+/* ---------- Client portal ---------- */
+.portal-wrap { max-width: 470px; margin: 7vh auto; padding: 0 1rem; }
+.portal-card { border-radius: 1.5rem; }
 .portal-logo {
-    width: 64px;
-    height: 64px;
-    line-height: 64px;
-    margin: 0 auto;
-    border-radius: 50%;
-    background: #0d6efd;
-    color: #fff;
-    font-size: 1.8rem;
+  width: 74px; height: 74px; line-height: 74px; margin: 0 auto; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff; font-size: 2rem;
+  box-shadow: 0 10px 28px rgba(99, 102, 241, .45);
+}
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
+/* ---------- Responsive ---------- */
 @media (max-width: 768px) {
-    .sidebar { width: 100%; min-height: auto; position: static; }
-    .d-flex { flex-direction: column; }
+  .app-shell { flex-direction: column; }
+  .sidebar { width: 100%; min-height: auto; position: static; }
 }
