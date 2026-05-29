@@ -298,10 +298,13 @@ def connected_clients(request: Request, db: Session = Depends(get_db), admin=Dep
                 registered = None
                 if lease.get("mac_address"):
                     registered = clients_service.get_client_by_mac(db, lease["mac_address"])
+                if registered is not None:
+                    clients_service.touch_last_seen(db, registered)
                 leases.append(
                     {
                         **lease,
                         "registered": registered is not None,
+                        "client_id": registered.id if registered else None,
                         "client_status": registered.status if registered else None,
                     }
                 )
@@ -309,7 +312,35 @@ def connected_clients(request: Request, db: Session = Depends(get_db), admin=Dep
             error = f"MikroTik API connection failed: {exc}"
         finally:
             mk_client.close()
-    return render(request, "admin_connected_clients.html", leases=leases, error=error, device=device)
+    return render(
+        request,
+        "admin_connected_clients.html",
+        leases=leases,
+        error=error,
+        device=device,
+        clients=clients_service.search_clients(db),
+    )
+
+
+@router.post("/connected-clients/bind")
+def connected_bind(
+    request: Request,
+    client_id: int = Form(...),
+    mac_address: str = Form(""),
+    ip_address: str = Form(""),
+    hostname: str = Form(""),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    client = clients_service.get_client(db, client_id)
+    if not client:
+        flash(request, "Клиент не найден.", "danger")
+        return _redirect("/admin/connected-clients")
+    clients_service.bind_device(
+        db, client, mac_address=mac_address, ip_address=ip_address, hostname=hostname
+    )
+    flash(request, f"Устройство привязано к клиенту #{client.id} ({client.phone}).", "success")
+    return _redirect("/admin/connected-clients")
 
 
 @router.get("/access-points")
@@ -399,12 +430,24 @@ def client_edit_form(request: Request, client_id: int, db: Session = Depends(get
     if not client:
         flash(request, "Клиент не найден.", "danger")
         return _redirect("/admin/clients")
+    # Best-effort: load current DHCP leases so the admin can bind a device.
+    leases = []
+    device = get_active_device(db)
+    if device is not None:
+        mk_client = build_client(device)
+        try:
+            leases = mk_client.get_dhcp_leases()
+        except MikroTikError:
+            leases = []
+        finally:
+            mk_client.close()
     return render(
         request,
         "admin_client_edit.html",
         client=client,
         tariffs=tariffs_service.list_tariffs(db),
         devices=devices_service.list_devices(db),
+        leases=leases,
     )
 
 
@@ -417,6 +460,8 @@ def client_edit(
     mikrotik_id: Optional[str] = Form(None),
     status: int = Form(...),
     expires_at: Optional[str] = Form(None),
+    mac_address: str = Form(""),
+    ip_address: str = Form(""),
     comment: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     admin=Depends(require_admin),
@@ -427,11 +472,16 @@ def client_edit(
         return _redirect("/admin/clients")
 
     old_status = client.status
+    old_ip = client.ip_address
+    old_mac = client.mac_address
     client.phone = phone.strip()
     client.tariff_id = int(tariff_id) if tariff_id else None
     client.mikrotik_id = int(mikrotik_id) if mikrotik_id else None
     client.comment = comment
     client.expires_at = _parse_dt(expires_at)
+    # MAC / IP are editable (Manual Admin Mode); blank clears the field.
+    client.mac_address = mac_address.strip() or None
+    client.ip_address = ip_address.strip() or None
     db.commit()
 
     # Handle status transitions through MikroTik (0<->1).
@@ -445,6 +495,11 @@ def client_edit(
         else:
             client.status = status
             db.commit()
+    elif status == STATUS_ACTIVE and (
+        client.ip_address != old_ip or client.mac_address != old_mac
+    ):
+        # Active client whose MAC/IP changed: re-push to MikroTik.
+        activate_client(db, client)
     else:
         log_access(db, action="update_client", client_id=client.id, new_status=status)
 

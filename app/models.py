@@ -127,6 +127,8 @@ class Client(Base):
     activated_at = Column(DateTime, nullable=True)
     deactivated_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
+    # Last time the device was seen in a DHCP lease / portal interaction.
+    last_seen = Column(DateTime, nullable=True)
     comment = Column(Text, nullable=True)
 
     tariff = relationship("Tariff", back_populates="clients")

@@ -35,6 +35,11 @@ def activate_client(db: Session, client: Client, reason: str = "manual") -> dict
         mk_error = "Client has no IP address (no DHCP lease yet)"
     elif device is None:
         mk_error = "No active MikroTik device configured"
+    elif client.ip_address == device.host:
+        mk_error = (
+            "IP клиента совпадает с IP роутера — привяжите устройство из DHCP "
+            "leases (см. редактирование клиента)"
+        )
     else:
         mk_client = build_client(device)
         try:

@@ -103,10 +103,44 @@ def upsert_registration(
         client.hostname = hostname
     if mikrotik_id:
         client.mikrotik_id = mikrotik_id
+    client.last_seen = dt.datetime.utcnow()
 
     db.commit()
     db.refresh(client)
     return client
+
+
+def bind_device(
+    db: Session,
+    client: models.Client,
+    mac_address: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    hostname: Optional[str] = None,
+) -> models.Client:
+    """Attach a device (from a DHCP lease) to a client. Used for manual binding."""
+    if mac_address:
+        client.mac_address = mac_address.strip()
+    if ip_address:
+        client.ip_address = ip_address.strip()
+    if hostname:
+        client.hostname = hostname.strip()
+    client.last_seen = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(client)
+    log_access(
+        db,
+        action="update_client",
+        client_id=client.id,
+        mikrotik_id=client.mikrotik_id,
+        new_status=client.status,
+        mikrotik_result=f"bind device mac={client.mac_address} ip={client.ip_address}",
+    )
+    return client
+
+
+def touch_last_seen(db: Session, client: models.Client) -> None:
+    client.last_seen = dt.datetime.utcnow()
+    db.commit()
 
 
 def delete_client(db: Session, client: models.Client) -> None:

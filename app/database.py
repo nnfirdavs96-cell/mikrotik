@@ -28,3 +28,31 @@ def init_db():
     from . import models  # noqa: F401  (ensure models are registered)
 
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
+
+
+def ensure_schema():
+    """Add columns introduced after the first release (create_all won't ALTER).
+
+    Idempotent and DB-agnostic enough for SQLite/Postgres.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    def add_column(table: str, column: str, ddl_type: str) -> None:
+        try:
+            existing = {c["name"] for c in inspector.get_columns(table)}
+        except Exception:
+            return
+        if column not in existing:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+                    )
+            except Exception:
+                # Already added / added concurrently; ignore.
+                pass
+
+    add_column("clients", "last_seen", "DATETIME")
