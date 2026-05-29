@@ -45,6 +45,46 @@ class Settings(BaseSettings):
     # Keep False for MVP testing without hardware.
     PORTAL_REQUIRE_LEASE: bool = False
 
+    # ----- Stage 2: speed / traffic limits on MikroTik -----
+    # Apply per-tariff speed limits via MikroTik simple queues on activation.
+    APPLY_QUEUES: bool = True
+    QUEUE_PREFIX: str = "wam"  # simple-queue name prefix: wam-<client_id>
+
+    # ----- Stage 2: in-app scheduler (APScheduler) -----
+    SCHEDULER_ENABLED: bool = True
+    EXPIRE_INTERVAL_MINUTES: int = 10
+    # Periodic traffic-quota enforcement (reads simple-queue byte counters).
+    TRAFFIC_CHECK_ENABLED: bool = False
+    TRAFFIC_CHECK_INTERVAL_MINUTES: int = 15
+
+    # ----- Stage 2: generic HTTP SMS provider -----
+    # SMS_PROVIDER=mock (default) or http
+    SMS_API_URL: str = ""
+    SMS_API_KEY: str = ""
+    SMS_API_METHOD: str = "POST"          # GET | POST
+    SMS_API_AUTH_HEADER: str = "Authorization"  # header name for the key
+    SMS_API_AUTH_PREFIX: str = "Bearer "  # prefix before the key value
+    SMS_SENDER: str = ""                   # optional sender/from
+    SMS_PHONE_PARAM: str = "phone"         # request field for the phone
+    SMS_TEXT_PARAM: str = "text"           # request field for the message
+    SMS_SENDER_PARAM: str = "from"         # request field for the sender
+    SMS_EXTRA_PARAMS: str = ""             # optional JSON of extra fields
+    SMS_JSON_BODY: bool = True             # POST as JSON (True) or form (False)
+
+    # ----- Stage 2: generic HTTP payment provider -----
+    # PAYMENT_PROVIDER=mock (default) or http
+    PAYMENT_API_URL: str = ""             # endpoint to create a payment
+    PAYMENT_API_KEY: str = ""
+    PAYMENT_API_AUTH_HEADER: str = "Authorization"
+    PAYMENT_API_AUTH_PREFIX: str = "Bearer "
+    PAYMENT_RETURN_URL: str = ""          # where the user returns after paying
+    PAYMENT_CALLBACK_URL: str = ""        # provider -> our /api/payments/webhook
+    PAYMENT_PAY_URL_FIELD: str = "payment_url"  # field with the redirect URL
+    PAYMENT_ID_FIELD: str = "id"          # field with the provider payment id
+
+    # Public base URL of this app (used to build return/callback URLs).
+    PUBLIC_BASE_URL: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

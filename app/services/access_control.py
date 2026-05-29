@@ -47,6 +47,18 @@ def activate_client(db: Session, client: Client, reason: str = "manual") -> dict
             )
             mk_ok = True
             mk_result = res.get("message")
+            # Stage 2: apply per-tariff speed limit via a simple queue.
+            if (
+                settings.APPLY_QUEUES
+                and client.tariff is not None
+                and client.tariff.speed_limit
+            ):
+                qname = f"{settings.QUEUE_PREFIX}-{client.id}"
+                qcomment = f"wifi-client client_id={client.id} phone={client.phone}"
+                qres = mk_client.add_simple_queue(
+                    qname, client.ip_address, client.tariff.speed_limit, qcomment
+                )
+                mk_result = f"{mk_result}; queue: {qres.get('message')}"
         except MikroTikError as exc:
             mk_error = str(exc)
         finally:
@@ -105,6 +117,9 @@ def deactivate_client(
             )
             mk_ok = True
             mk_result = res.get("message")
+            # Stage 2: remove the per-client speed-limit queue.
+            if settings.APPLY_QUEUES:
+                mk_client.remove_simple_queue(f"{settings.QUEUE_PREFIX}-{client.id}")
         except MikroTikError as exc:
             mk_error = str(exc)
         finally:

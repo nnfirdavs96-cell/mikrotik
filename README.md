@@ -411,11 +411,94 @@ requirements.txt     .env.example  README.md
 | 3 | expired | серый |
 | 4 | blocked | тёмно-красный |
 
-## Что готово к расширению (этап 2)
+## Этап 2 (реализовано)
 
-Архитектура подготовлена для: реального SMS-провайдера, реального платёжного
-шлюза, автоматического captive redirect, ограничения скорости/трафика по тарифу,
-нескольких MikroTik и нескольких guest-сетей.
+Реализованы 4 фичи второго этапа. Все управляются через `.env`.
+
+### 1. Ограничение скорости по тарифу (simple queues)
+
+При активации клиента, если у тарифа задан `speed_limit`, на MikroTik
+создаётся **simple queue** для IP клиента (`max-limit`), при деактивации —
+удаляется. Имя очереди: `<QUEUE_PREFIX>-<client_id>`.
+
+- `speed_limit` принимает форматы: `10M` (одинаково на upload/download) или
+  `10M/20M` (upload/download).
+- Включается флагом `APPLY_QUEUES=true`.
+
+### 2. Контроль трафика по тарифу (квота)
+
+Если у тарифа задан `traffic_limit` (например `5GB`, `500M`), планировщик
+периодически читает счётчики байт у simple queue клиента и при превышении
+квоты деактивирует его (статус `expired`).
+
+- Включается флагом `TRAFFIC_CHECK_ENABLED=true`.
+- Поддерживаемые единицы: `k`, `M`, `G`, `T` (и без единиц — байты).
+
+### 3. Авто-expire через встроенный планировщик (APScheduler)
+
+Вместо cron приложение само запускает фоновый планировщик:
+- задача `expire_clients` каждые `EXPIRE_INTERVAL_MINUTES` минут;
+- задача контроля трафика каждые `TRAFFIC_CHECK_INTERVAL_MINUTES` (если включена).
+
+Управление: `SCHEDULER_ENABLED=true`. Старый ручной endpoint
+`POST /api/tasks/expire-clients` и cron по-прежнему работают.
+
+### 4. Реальный SMS-провайдер (generic HTTP)
+
+`SMS_PROVIDER=http` включает `HTTPSMSProvider` — универсальный клиент под
+любой REST SMS API:
+
+```
+SMS_PROVIDER=http
+SMS_API_URL=https://sms-gateway.example/send
+SMS_API_KEY=your_key
+SMS_API_METHOD=POST           # GET | POST
+SMS_API_AUTH_HEADER=Authorization
+SMS_API_AUTH_PREFIX=Bearer    # пробел добавляется автоматически
+SMS_PHONE_PARAM=phone         # имя поля для номера
+SMS_TEXT_PARAM=text           # имя поля для текста
+SMS_SENDER=YourName           # необязательно
+SMS_EXTRA_PARAMS={"unicode":1}  # необязательно, JSON
+SMS_JSON_BODY=true            # POST как JSON или form
+```
+
+Если провайдер другой структуры — достаточно поменять имена полей.
+
+### 5. Реальная оплата (generic HTTP gateway)
+
+`PAYMENT_PROVIDER=http` включает `HTTPPaymentProvider`. Поток:
+
+1. Клиент жмёт «Перейти к оплате» → backend создаёт платёж через
+   `PAYMENT_API_URL` и **редиректит** пользователя на платёжную страницу
+   (`payment_url` из ответа шлюза).
+2. Шлюз после оплаты вызывает наш `POST /api/payments/webhook`
+   (`X-API-Key`) со статусом `paid` → клиент активируется, IP добавляется в
+   `allowed_clients`.
+3. Шлюз возвращает пользователя на `PAYMENT_RETURN_URL` (обычно
+   `/portal/success`).
+
+```
+PAYMENT_PROVIDER=http
+PAYMENT_API_URL=https://pay.example/create
+PAYMENT_API_KEY=your_key
+PAYMENT_RETURN_URL=https://wifi.example/portal/success
+PAYMENT_CALLBACK_URL=https://wifi.example/api/payments/webhook
+PAYMENT_PAY_URL_FIELD=payment_url   # поле ответа с URL оплаты
+PAYMENT_ID_FIELD=id                 # поле ответа с id платежа
+PUBLIC_BASE_URL=https://wifi.example
+```
+
+Тело запроса к шлюзу: `amount, currency, client_id, tariff_id, return_url,
+callback_url`. Если у твоего шлюза другой формат — скажи, адаптирую провайдер.
+
+> По умолчанию `SMS_PROVIDER=mock` и `PAYMENT_PROVIDER=mock` — всё работает
+> без внешних сервисов. Реальные провайдеры включаются сменой значения на
+> `http` и заполнением соответствующих переменных.
+
+## Что ещё можно добавить (этап 3)
+
+Автоматический captive redirect (hotspot/DNS), несколько активных MikroTik
+одновременно и несколько guest-сетей, личный кабинет клиента, экспорт отчётов.
 
 > **MVP-замечание:** при `PORTAL_REQUIRE_LEASE=false` портал продолжает работу,
 > даже если MikroTik недоступен или DHCP lease не найден (удобно для теста без

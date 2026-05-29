@@ -301,3 +301,94 @@ class MikroTikAPIClient:
                     result["errors"].append(str(exc))
 
         return result
+
+    # ------------------------------------------------------------------
+    # Simple queues (per-client speed limits) — Stage 2
+    # ------------------------------------------------------------------
+    @staticmethod
+    def normalize_speed(speed_limit: str) -> str:
+        """Normalize a tariff speed string into RouterOS max-limit 'up/down'.
+
+        Accepts '10M', '10M/20M', '10240k/10240k'. If no slash is given the
+        same value is used for upload and download.
+        """
+        value = (speed_limit or "").strip()
+        if not value:
+            return ""
+        if "/" not in value:
+            value = f"{value}/{value}"
+        return value
+
+    def _find_simple_queue(self, name: str) -> Optional[Dict[str, Any]]:
+        for item in self.api.path("queue", "simple"):
+            if item.get("name") == name:
+                return item
+        return None
+
+    def add_simple_queue(
+        self,
+        name: str,
+        target_ip: str,
+        max_limit: str,
+        comment: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create/update a simple queue limiting ``target_ip`` to ``max_limit``."""
+        max_limit = self.normalize_speed(max_limit)
+        if not max_limit:
+            return {"success": True, "skipped": True, "message": "No speed limit"}
+        try:
+            path = self.api.path("queue", "simple")
+            existing = self._find_simple_queue(name)
+            target = f"{target_ip}/32" if "/" not in target_ip else target_ip
+            if existing:
+                path.update(**{
+                    ".id": existing.get(".id"),
+                    "target": target,
+                    "max-limit": max_limit,
+                    "comment": comment or "",
+                })
+                return {"success": True, "message": "Queue updated", "id": existing.get(".id")}
+            new_id = path.add(
+                name=name,
+                target=target,
+                **{"max-limit": max_limit},
+                comment=comment or "",
+            )
+            return {"success": True, "message": "Queue added", "id": new_id}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"add_simple_queue failed: {exc}") from exc
+
+    def remove_simple_queue(self, name: str) -> Dict[str, Any]:
+        """Remove a simple queue by name; missing queue is not an error."""
+        try:
+            existing = self._find_simple_queue(name)
+            if not existing:
+                return {"success": True, "not_found": True, "message": "Queue not found"}
+            self.api.path("queue", "simple").remove(existing.get(".id"))
+            return {"success": True, "message": "Queue removed"}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"remove_simple_queue failed: {exc}") from exc
+
+    def get_simple_queue_bytes(self, name: str) -> Optional[int]:
+        """Return total bytes (upload+download) for a simple queue, or None."""
+        try:
+            existing = self._find_simple_queue(name)
+            if not existing:
+                return None
+            raw = existing.get("bytes") or "0/0"
+            parts = str(raw).split("/")
+            total = 0
+            for p in parts:
+                try:
+                    total += int(p)
+                except ValueError:
+                    pass
+            return total
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"get_simple_queue_bytes failed: {exc}") from exc
