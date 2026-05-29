@@ -30,6 +30,8 @@ from ..mikrotik.client import MikroTikError
 from ..mikrotik.service import build_client, get_active_device, get_capsman_for_device
 from ..services import clients as clients_service
 from ..services import mikrotik_devices as devices_service
+from ..services import settings_store
+from ..services import sms as sms_service
 from ..services import tariffs as tariffs_service
 from ..services.access_control import (
     activate_client,
@@ -747,7 +749,111 @@ def settings_page(request: Request, db: Session = Depends(get_db), admin=Depends
         "mikrotik_status": mk_status,
         "allowed_list": settings.DEFAULT_ALLOWED_LIST,
         "guest_network": settings.DEFAULT_GUEST_NETWORK,
-        "sms_provider": settings.SMS_PROVIDER,
-        "payment_provider": settings.PAYMENT_PROVIDER,
+        "sms_provider": settings_store.effective(db)["SMS_PROVIDER"],
+        "payment_provider": settings_store.effective(db)["PAYMENT_PROVIDER"],
     }
     return render(request, "admin_settings.html", info=info)
+
+
+# ---------------------------------------------------------------------------
+# Integrations (SMS / payment providers) — configured from the UI
+# ---------------------------------------------------------------------------
+@router.get("/integrations")
+def integrations(request: Request, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    cfg = settings_store.effective(db)
+    secret_set = {k: bool(cfg.get(k)) for k in settings_store.SECRET_KEYS}
+    return render(
+        request,
+        "admin_integrations.html",
+        cfg=cfg,
+        secret_set=secret_set,
+        sms_json_body=settings_store.as_bool(cfg.get("SMS_JSON_BODY", "true")),
+    )
+
+
+@router.post("/integrations/sms")
+def integrations_sms(
+    request: Request,
+    SMS_PROVIDER: str = Form("mock"),
+    SMS_API_URL: str = Form(""),
+    SMS_API_KEY: str = Form(""),
+    SMS_API_METHOD: str = Form("POST"),
+    SMS_API_AUTH_HEADER: str = Form("Authorization"),
+    SMS_API_AUTH_PREFIX: str = Form("Bearer"),
+    SMS_SENDER: str = Form(""),
+    SMS_PHONE_PARAM: str = Form("phone"),
+    SMS_TEXT_PARAM: str = Form("text"),
+    SMS_SENDER_PARAM: str = Form("from"),
+    SMS_EXTRA_PARAMS: str = Form(""),
+    SMS_JSON_BODY: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    data = {
+        "SMS_PROVIDER": SMS_PROVIDER,
+        "SMS_API_URL": SMS_API_URL.strip(),
+        "SMS_API_METHOD": SMS_API_METHOD,
+        "SMS_API_AUTH_HEADER": SMS_API_AUTH_HEADER,
+        "SMS_API_AUTH_PREFIX": SMS_API_AUTH_PREFIX,
+        "SMS_SENDER": SMS_SENDER,
+        "SMS_PHONE_PARAM": SMS_PHONE_PARAM,
+        "SMS_TEXT_PARAM": SMS_TEXT_PARAM,
+        "SMS_SENDER_PARAM": SMS_SENDER_PARAM,
+        "SMS_EXTRA_PARAMS": SMS_EXTRA_PARAMS,
+        "SMS_JSON_BODY": "true" if _bool(SMS_JSON_BODY) else "false",
+    }
+    # Empty key field keeps the previously stored key.
+    if SMS_API_KEY.strip():
+        data["SMS_API_KEY"] = SMS_API_KEY.strip()
+    settings_store.save(db, data)
+    flash(request, "Настройки SMS сохранены.", "success")
+    return _redirect("/admin/integrations")
+
+
+@router.post("/integrations/payment")
+def integrations_payment(
+    request: Request,
+    PAYMENT_PROVIDER: str = Form("mock"),
+    PAYMENT_API_URL: str = Form(""),
+    PAYMENT_API_KEY: str = Form(""),
+    PAYMENT_API_AUTH_HEADER: str = Form("Authorization"),
+    PAYMENT_API_AUTH_PREFIX: str = Form("Bearer"),
+    PAYMENT_RETURN_URL: str = Form(""),
+    PAYMENT_CALLBACK_URL: str = Form(""),
+    PAYMENT_PAY_URL_FIELD: str = Form("payment_url"),
+    PAYMENT_ID_FIELD: str = Form("id"),
+    PUBLIC_BASE_URL: str = Form(""),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    data = {
+        "PAYMENT_PROVIDER": PAYMENT_PROVIDER,
+        "PAYMENT_API_URL": PAYMENT_API_URL.strip(),
+        "PAYMENT_API_AUTH_HEADER": PAYMENT_API_AUTH_HEADER,
+        "PAYMENT_API_AUTH_PREFIX": PAYMENT_API_AUTH_PREFIX,
+        "PAYMENT_RETURN_URL": PAYMENT_RETURN_URL.strip(),
+        "PAYMENT_CALLBACK_URL": PAYMENT_CALLBACK_URL.strip(),
+        "PAYMENT_PAY_URL_FIELD": PAYMENT_PAY_URL_FIELD,
+        "PAYMENT_ID_FIELD": PAYMENT_ID_FIELD,
+        "PUBLIC_BASE_URL": PUBLIC_BASE_URL.strip(),
+    }
+    if PAYMENT_API_KEY.strip():
+        data["PAYMENT_API_KEY"] = PAYMENT_API_KEY.strip()
+    settings_store.save(db, data)
+    flash(request, "Настройки оплаты сохранены.", "success")
+    return _redirect("/admin/integrations")
+
+
+@router.post("/integrations/test-sms")
+def integrations_test_sms(
+    request: Request,
+    phone: str = Form(...),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    res = sms_service.send_sms(db, phone.strip(), f"Тест SMS от {settings.APP_NAME}")
+    if res.get("success"):
+        flash(request, "Тестовая SMS отправлена (см. SMS / OTP логи).", "success")
+    else:
+        flash(request, f"Ошибка отправки SMS: {res.get('error')}", "danger")
+    return _redirect("/admin/integrations")
