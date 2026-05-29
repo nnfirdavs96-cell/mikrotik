@@ -159,3 +159,12 @@ def mark_failed(db: Session, payment: models.Payment, error: str) -> models.Paym
 
 def get_payment(db: Session, payment_id: int) -> Optional[models.Payment]:
     return db.query(models.Payment).filter(models.Payment.id == payment_id).first()
+
+
+def list_payments_for_client(db: Session, client_id: int):
+    return (
+        db.query(models.Payment)
+        .filter(models.Payment.client_id == client_id)
+        .order_by(models.Payment.id.desc())
+        .all()
+    )

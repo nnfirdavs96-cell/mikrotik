@@ -1,0 +1,17 @@
+{% extends "portal_base.html" %}
+{% block title %}Личный кабинет{% endblock %}
+{% block content %}
+<p class="text-center text-muted">Вход в личный кабинет по номеру телефона — придёт SMS-код.</p>
+<form method="post" action="/portal/login">
+    <div class="mb-3">
+        <label class="form-label">Номер телефона</label>
+        <input type="tel" name="phone" class="form-control form-control-lg" placeholder="+992 90 000 00 00" autofocus required>
+    </div>
+    <div class="d-grid">
+        <button class="btn btn-primary btn-lg">Получить код</button>
+    </div>
+</form>
+<p class="text-muted small mt-3 mb-0 text-center">Ещё не регистрировались?
+    <a href="/portal/phone">Пройти регистрацию</a></p>
+<a href="/portal" class="btn btn-link w-100 mt-2">На главную</a>
+{% endblock %}

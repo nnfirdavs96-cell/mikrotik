@@ -138,6 +138,10 @@ def verify_otp(request: Request, code: str = Form(...), db: Session = Depends(ge
     if client:
         client.phone_verified = True
         db.commit()
+    # Cabinet login goes to the cabinet; registration continues to tariffs.
+    if state.get("cabinet"):
+        flash(request, "Вход выполнен.", "success")
+        return _redirect("/portal/cabinet")
     flash(request, "Номер подтверждён. Выберите тариф.", "success")
     return _redirect("/portal/tariffs")
 
@@ -241,7 +245,7 @@ def mock_pay(request: Request, db: Session = Depends(get_db)):
     tariff = get_tariff(db, payment.tariff_id) if payment.tariff_id else None
     if tariff:
         client.tariff_id = tariff.id
-        client.expires_at = dt.datetime.utcnow() + dt.timedelta(days=tariff.validity_days)
+        clients_service.extend_expiry(client, tariff)
         db.commit()
 
     result = activate_client(db, client, reason="payment")
@@ -279,3 +283,75 @@ def status_page(request: Request, db: Session = Depends(get_db)):
             client = clients_service.get_client_by_ip(db, client_ip)
     tariff = get_tariff(db, client.tariff_id) if client and client.tariff_id else None
     return render(request, "portal_status.html", client=client, tariff=tariff)
+
+
+# ---------------------------------------------------------------------------
+# Client cabinet (login by phone + OTP, status/history, tariff renewal)
+# ---------------------------------------------------------------------------
+@router.get("/login")
+def cabinet_login_form(request: Request):
+    return render(request, "portal_login.html")
+
+
+@router.post("/login")
+def cabinet_login(request: Request, phone: str = Form(...), db: Session = Depends(get_db)):
+    phone = phone.strip()
+    client = clients_service.get_client_by_phone(db, phone)
+    if not client:
+        flash(request, "Клиент с таким номером не найден. Пройдите регистрацию.", "warning")
+        return _redirect("/portal/phone")
+
+    # Refresh IP/MAC from the current DHCP lease if the router is reachable.
+    info = portal_service.resolve_device_info(db, portal_service.get_client_ip(request))
+    if info.get("found"):
+        if info.get("ip"):
+            client.ip_address = info["ip"]
+        if info.get("mac"):
+            client.mac_address = info["mac"]
+        db.commit()
+
+    code = otp_service.create_otp(db, phone)
+    sms_service.send_sms(db, phone, f"Ваш код входа {settings.APP_NAME}: {code}")
+    log_access(db, action="send_otp", client_id=client.id)
+
+    state = _state(request)
+    state.update(
+        {
+            "phone": phone,
+            "client_id": client.id,
+            "verified": False,
+            "cabinet": True,
+            "tariff_id": None,
+            "payment_id": None,
+        }
+    )
+    if settings.SMS_PROVIDER == "mock":
+        state["dev_code"] = code
+    return _redirect("/portal/verify")
+
+
+@router.get("/cabinet")
+def cabinet(request: Request, db: Session = Depends(get_db)):
+    state = _state(request)
+    if not state.get("verified") or not state.get("client_id"):
+        flash(request, "Войдите в личный кабинет по номеру телефона.", "warning")
+        return _redirect("/portal/login")
+    client = clients_service.get_client(db, state["client_id"])
+    if client is None:
+        return _redirect("/portal/login")
+    tariff = get_tariff(db, client.tariff_id) if client.tariff_id else None
+    payments = payments_service.list_payments_for_client(db, client.id)
+    return render(
+        request,
+        "portal_cabinet.html",
+        client=client,
+        tariff=tariff,
+        payments=payments,
+    )
+
+
+@router.get("/logout")
+def cabinet_logout(request: Request):
+    request.session.pop("portal", None)
+    flash(request, "Вы вышли из кабинета.", "info")
+    return _redirect("/portal")

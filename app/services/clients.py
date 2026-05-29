@@ -1,4 +1,5 @@
 """Client queries and helpers."""
+import datetime as dt
 from typing import Optional
 
 from sqlalchemy import or_
@@ -6,6 +7,18 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from .logs import log_access
+
+
+def extend_expiry(client: models.Client, tariff: models.Tariff) -> None:
+    """Set/extend the client's expires_at by the tariff validity.
+
+    If the client is still within an active period, the new tariff days are
+    added on top (renewal); otherwise the period starts from now. The caller
+    is responsible for committing the session.
+    """
+    now = dt.datetime.utcnow()
+    base = client.expires_at if (client.expires_at and client.expires_at > now) else now
+    client.expires_at = base + dt.timedelta(days=tariff.validity_days)
 
 
 def get_client(db: Session, client_id: int) -> Optional[models.Client]:
