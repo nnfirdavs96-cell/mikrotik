@@ -7,6 +7,7 @@ The client is intentionally defensive: every method raises a MikroTikError on
 failure so the calling service layer can log it and keep the application
 running even when the router is unreachable.
 """
+import re
 import ssl
 from typing import Any, Dict, List, Optional
 
@@ -229,6 +230,32 @@ class MikroTikAPIClient:
             raise
         except Exception as exc:  # noqa: BLE001
             raise MikroTikError(f"remove_ip_from_allowed_list failed: {exc}") from exc
+
+    def remove_allowed_by_client_id(
+        self, client_id, list_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Remove all address-list entries whose comment carries this client_id.
+
+        More robust than removing by IP: works even if the client's IP changed.
+        Comment format: ``wifi-client | phone=... | mac=... | client_id=<id>``.
+        """
+        list_name = list_name or settings.DEFAULT_ALLOWED_LIST
+        try:
+            path = self.api.path("ip", "firewall", "address-list")
+            to_remove = []
+            for item in self.api.path("ip", "firewall", "address-list"):
+                if item.get("list") != list_name:
+                    continue
+                match = re.search(r"client_id=(\d+)", item.get("comment") or "")
+                if match and int(match.group(1)) == int(client_id):
+                    to_remove.append(item.get(".id"))
+            for entry_id in to_remove:
+                path.remove(entry_id)
+            return {"success": True, "removed": len(to_remove)}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"remove_allowed_by_client_id failed: {exc}") from exc
 
     def is_ip_in_allowed_list(
         self, ip_address: str, list_name: Optional[str] = None

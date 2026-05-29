@@ -39,6 +39,33 @@ def expire_old_otps(db: Session, phone: str) -> None:
     _ = now
 
 
+def can_request_otp(db: Session, phone: str):
+    """Rate-limit OTP requests. Returns (ok: bool, message: str)."""
+    now = dt.datetime.utcnow()
+    window_start = now - dt.timedelta(minutes=settings.OTP_RATE_LIMIT_WINDOW_MINUTES)
+    recent_count = (
+        db.query(models.OTPCode)
+        .filter(models.OTPCode.phone == phone, models.OTPCode.created_at >= window_start)
+        .count()
+    )
+    if recent_count >= settings.OTP_RATE_LIMIT_MAX:
+        return False, "Слишком много запросов кода. Попробуйте позже."
+
+    last = (
+        db.query(models.OTPCode)
+        .filter(models.OTPCode.phone == phone)
+        .order_by(models.OTPCode.created_at.desc())
+        .first()
+    )
+    if last is not None:
+        elapsed = (now - last.created_at).total_seconds()
+        cooldown = settings.OTP_RESEND_COOLDOWN_SECONDS
+        if elapsed < cooldown:
+            wait = int(cooldown - elapsed)
+            return False, f"Подождите {wait} сек перед повторной отправкой кода."
+    return True, ""
+
+
 def create_otp(db: Session, phone: str) -> str:
     """Create a fresh OTP, invalidating older ones. Returns the plaintext code."""
     expire_old_otps(db, phone)

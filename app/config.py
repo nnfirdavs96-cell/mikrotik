@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     OTP_LENGTH: int = 6
     OTP_TTL_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 3
+    # Rate limiting for OTP requests (anti-spam / anti-bruteforce).
+    OTP_RATE_LIMIT_MAX: int = 5            # max codes per phone per window
+    OTP_RATE_LIMIT_WINDOW_MINUTES: int = 60
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60  # min seconds between resends
 
     # Portal behaviour: require a real DHCP lease (MAC) before registering.
     # Keep False for MVP testing without hardware.
