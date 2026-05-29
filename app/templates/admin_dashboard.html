@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card text-bg-light"><div class="card-body"><div class="text-muted small">Всего клиентов</div><div class="h3">{{ stats.total }}</div></div></div></div>
+    <div class="col-md-3"><div class="card text-bg-success"><div class="card-body"><div class="small">Активные</div><div class="h3">{{ stats.active }}</div></div></div></div>
+    <div class="col-md-3"><div class="card text-bg-danger"><div class="card-body"><div class="small">Неактивные</div><div class="h3">{{ stats.inactive }}</div></div></div></div>
+    <div class="col-md-3"><div class="card text-bg-warning"><div class="card-body"><div class="small">Ожидают оплату</div><div class="h3">{{ stats.pending }}</div></div></div></div>
+</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card text-bg-secondary"><div class="card-body"><div class="small">Истёкшие</div><div class="h3">{{ stats.expired }}</div></div></div></div>
+    <div class="col-md-3"><div class="card text-bg-dark"><div class="card-body"><div class="small">Заблокированные</div><div class="h3">{{ stats.blocked }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Платежей сегодня</div><div class="h3">{{ stats.payments_today_count }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">Сумма сегодня</div><div class="h3">{{ stats.payments_today_sum }} {{ currency }}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card"><div class="card-body">
+            <h6 class="card-title">MikroTik</h6>
+            {% if device %}
+                <p class="mb-1"><strong>{{ device.name }}</strong> ({{ device.host }}:{{ device.port }})</p>
+                <p class="mb-1">Статус:
+                    {% if mk_status == 'ok' %}<span class="badge bg-success">подключен</span>
+                    {% elif mk_status == 'error' %}<span class="badge bg-danger">ошибка</span>
+                    {% else %}<span class="badge bg-secondary">{{ mk_status }}</span>{% endif %}
+                </p>
+                <p class="mb-0">IP в allowed_clients: <strong>{{ stats.allowed_count if stats.allowed_count is not none else '—' }}</strong></p>
+            {% else %}
+                <p class="text-muted mb-0">Нет активного MikroTik. <a href="/admin/mikrotik/new">Добавить</a></p>
+            {% endif %}
+        </div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card"><div class="card-body">
+            <h6 class="card-title">MikroTik устройств</h6>
+            <div class="h3">{{ stats.mikrotik_count }}</div>
+            <a href="/admin/mikrotik" class="btn btn-sm btn-outline-secondary">Управление</a>
+        </div></div>
+    </div>
+</div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Последние действия</h6>
+    <div class="table-responsive">
+    <table class="table table-sm">
+        <thead><tr><th>Время</th><th>Действие</th><th>Клиент</th><th>Статус</th><th>Результат / ошибка</th></tr></thead>
+        <tbody>
+        {% for log in logs %}
+            <tr>
+                <td class="small">{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="badge bg-info text-dark">{{ log.action }}</span></td>
+                <td>{{ log.client_id or '—' }}</td>
+                <td>{{ log.new_status if log.new_status is not none else '—' }}</td>
+                <td class="small">{% if log.error_message %}<span class="text-danger">{{ log.error_message }}</span>{% else %}{{ log.mikrotik_result or '' }}{% endif %}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="text-muted">Нет записей</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div></div>
+{% endblock %}

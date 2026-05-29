@@ -1,0 +1,14 @@
+[Unit]
+Description=WiFi Access Manager
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/wifi-access-manager
+EnvironmentFile=/opt/wifi-access-manager/.env
+ExecStart=/opt/wifi-access-manager/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

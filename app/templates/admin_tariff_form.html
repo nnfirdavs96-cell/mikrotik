@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if tariff else 'Создать' }} тариф{% endblock %}
+{% block heading %}{{ 'Редактировать' if tariff else 'Создать' }} тариф{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+<form method="post" action="{{ '/admin/tariffs/' ~ tariff.id ~ '/edit' if tariff else '/admin/tariffs/new' }}" class="row g-3" style="max-width: 700px;">
+    <div class="col-md-8">
+        <label class="form-label">Название</label>
+        <input type="text" name="name" value="{{ tariff.name if tariff else '' }}" class="form-control" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Срок (дней)</label>
+        <input type="number" name="validity_days" value="{{ tariff.validity_days if tariff else 1 }}" class="form-control" min="1">
+    </div>
+    <div class="col-12">
+        <label class="form-label">Описание</label>
+        <textarea name="description" class="form-control" rows="2">{{ tariff.description if tariff else '' }}</textarea>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Цена</label>
+        <input type="number" step="0.01" name="price" value="{{ tariff.price if tariff else 0 }}" class="form-control">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Валюта</label>
+        <input type="text" name="currency" value="{{ tariff.currency if tariff else currency }}" class="form-control">
+    </div>
+    <div class="col-md-4 form-check ms-2 mt-4">
+        <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {{ 'checked' if (tariff and tariff.is_active) or not tariff else '' }}>
+        <label class="form-check-label" for="is_active">Активен</label>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Ограничение скорости (опц.)</label>
+        <input type="text" name="speed_limit" value="{{ tariff.speed_limit if tariff else '' }}" class="form-control" placeholder="напр. 10M/10M">
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Ограничение трафика (опц.)</label>
+        <input type="text" name="traffic_limit" value="{{ tariff.traffic_limit if tariff else '' }}" class="form-control" placeholder="напр. 5GB">
+    </div>
+    <div class="col-12">
+        <button class="btn btn-primary">Сохранить</button>
+        <a href="/admin/tariffs" class="btn btn-outline-secondary">Назад</a>
+    </div>
+</form>
+</div></div>
+{% endblock %}

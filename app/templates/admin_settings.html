@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block heading %}Настройки{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 700px;"><div class="card-body">
+<table class="table">
+    <tbody>
+        <tr><th>Название приложения</th><td>{{ info.app_name }}</td></tr>
+        <tr><th>Версия</th><td>{{ info.app_version }}</td></tr>
+        <tr><th>DATABASE_URL</th><td><code>{{ info.database_url }}</code></td></tr>
+        <tr><th>Статус БД</th><td>{% if info.database_status == 'ok' %}<span class="badge bg-success">ok</span>{% else %}<span class="badge bg-danger">error</span>{% endif %}</td></tr>
+        <tr><th>Активный MikroTik</th><td>{{ info.active_mikrotik or '— не задан —' }}</td></tr>
+        <tr><th>Статус MikroTik API</th><td>
+            {% if info.mikrotik_status == 'ok' %}<span class="badge bg-success">ok</span>
+            {% elif info.mikrotik_status == 'error' %}<span class="badge bg-danger">error</span>
+            {% else %}<span class="badge bg-secondary">{{ info.mikrotik_status }}</span>{% endif %}
+        </td></tr>
+        <tr><th>Address-list</th><td><code>{{ info.allowed_list }}</code></td></tr>
+        <tr><th>Guest network</th><td><code>{{ info.guest_network }}</code></td></tr>
+        <tr><th>SMS provider</th><td>{{ info.sms_provider }}</td></tr>
+        <tr><th>Payment provider</th><td>{{ info.payment_provider }}</td></tr>
+    </tbody>
+</table>
+<p class="text-muted small mb-0">Пароли и секреты не отображаются. Все настройки задаются через <code>.env</code>.</p>
+</div></div>
+{% endblock %}

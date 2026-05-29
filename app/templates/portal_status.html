@@ -1,0 +1,20 @@
+{% extends "portal_base.html" %}
+{% block title %}Статус{% endblock %}
+{% block content %}
+{% if client %}
+<table class="table">
+    <tbody>
+        <tr><th>Телефон</th><td>{{ client.phone }}</td></tr>
+        <tr><th>Статус</th><td><span class="badge bg-{{ status_colors[client.status] }}">{{ status_labels[client.status] }}</span></td></tr>
+        <tr><th>Тариф</th><td>{{ tariff.name if tariff else '—' }}</td></tr>
+        <tr><th>Действует до</th><td>{{ client.expires_at.strftime('%Y-%m-%d %H:%M') if client.expires_at else '—' }}</td></tr>
+        <tr><th>IP</th><td>{{ client.ip_address or '—' }}</td></tr>
+        <tr><th>MAC</th><td>{{ client.mac_address or '—' }}</td></tr>
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info text-center">Регистрация не найдена для вашего устройства.</div>
+<a href="/portal/phone" class="btn btn-primary w-100">Зарегистрироваться</a>
+{% endif %}
+<a href="/portal" class="btn btn-link w-100 mt-2">На главную</a>
+{% endblock %}

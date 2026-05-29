@@ -1,0 +1,11 @@
+{% extends "portal_base.html" %}
+{% block title %}Ошибка оплаты{% endblock %}
+{% block content %}
+<div class="text-center">
+    <div class="display-1 text-danger"><i class="bi bi-x-circle-fill"></i></div>
+    <h5 class="mt-2">Оплата не прошла</h5>
+    <p class="text-muted">{{ reason }}</p>
+    <a href="/portal/payment" class="btn btn-primary mt-2">Повторить оплату</a>
+    <a href="/portal/tariffs" class="btn btn-link">Выбрать другой тариф</a>
+</div>
+{% endblock %}

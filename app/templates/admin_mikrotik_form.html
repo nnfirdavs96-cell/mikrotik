@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if device else 'Добавить' }} MikroTik{% endblock %}
+{% block heading %}{{ 'Редактировать' if device else 'Добавить' }} MikroTik{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+<form method="post" action="{{ '/admin/mikrotik/' ~ device.id ~ '/edit' if device else '/admin/mikrotik/new' }}" class="row g-3" style="max-width: 700px;">
+    <div class="col-md-6">
+        <label class="form-label">Название</label>
+        <input type="text" name="name" value="{{ device.name if device else '' }}" class="form-control" required>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">IP / Host</label>
+        <input type="text" name="host" value="{{ device.host if device else '' }}" class="form-control" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">API Port</label>
+        <input type="number" name="port" value="{{ device.port if device else 8728 }}" class="form-control">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" value="{{ device.username if device else '' }}" class="form-control" required>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Password {% if device %}<span class="text-muted small">(пусто = не менять)</span>{% endif %}</label>
+        <input type="password" name="password" class="form-control" {{ '' if device else 'required' }}>
+    </div>
+    <div class="col-md-4 form-check ms-2">
+        <input type="checkbox" name="use_ssl" class="form-check-input" id="use_ssl" {{ 'checked' if device and device.use_ssl else '' }}>
+        <label class="form-check-label" for="use_ssl">Use SSL (порт 8729)</label>
+    </div>
+    <div class="col-md-4 form-check ms-2">
+        <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {{ 'checked' if device and device.is_active else '' }}>
+        <label class="form-check-label" for="is_active">Is Active (главный)</label>
+    </div>
+    <div class="col-12">
+        <label class="form-label">Комментарий</label>
+        <textarea name="comment" class="form-control" rows="2">{{ device.comment if device else '' }}</textarea>
+    </div>
+    <div class="col-12">
+        <button class="btn btn-primary">Сохранить</button>
+        <a href="/admin/mikrotik" class="btn btn-outline-secondary">Назад</a>
+    </div>
+</form>
+</div></div>
+{% endblock %}
