@@ -623,6 +623,83 @@ class MikroTikAPIClient:
     def disable_hotspot_user(self, name: str) -> Dict[str, Any]:
         return self.set_hotspot_user_disabled(name, True)
 
+    # ------------------------------------------------------------------
+    # Managed firewall rules (tagged with a comment prefix) — Stage 4
+    # ------------------------------------------------------------------
+    def _section_comments(self, section) -> set:
+        return {item.get("comment") for item in self.api.path(*section)}
+
+    def list_managed_firewall(self, tag: str = "WAM:") -> List[Dict[str, Any]]:
+        """List firewall filter/NAT rules created by this app (comment tag)."""
+        try:
+            out = []
+            for section in (("ip", "firewall", "filter"), ("ip", "firewall", "nat")):
+                for item in self.api.path(*section):
+                    if (item.get("comment") or "").startswith(tag):
+                        out.append(
+                            {
+                                "section": section[-1],
+                                "id": item.get(".id"),
+                                "chain": item.get("chain"),
+                                "action": item.get("action"),
+                                "comment": item.get("comment"),
+                            }
+                        )
+            return out
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"list_managed_firewall failed: {exc}") from exc
+
+    def apply_firewall_rules(self, rules: List[tuple]) -> Dict[str, Any]:
+        """Add rules idempotently. ``rules`` = list of (section_tuple, kwargs).
+
+        A rule is skipped if a rule with the same comment already exists in that
+        section, so re-applying is safe. Order of ``rules`` is preserved.
+        """
+        result = {"added": 0, "skipped": 0, "errors": []}
+        cache: Dict[tuple, set] = {}
+        try:
+            for section, kwargs in rules:
+                key = tuple(section)
+                if key not in cache:
+                    cache[key] = self._section_comments(section)
+                comment = kwargs.get("comment")
+                if comment in cache[key]:
+                    result["skipped"] += 1
+                    continue
+                try:
+                    self.api.path(*section).add(**kwargs)
+                    result["added"] += 1
+                    cache[key].add(comment)
+                except Exception as exc:  # noqa: BLE001
+                    result["errors"].append(f"{comment}: {exc}")
+            return result
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"apply_firewall_rules failed: {exc}") from exc
+
+    def remove_managed_firewall(self, tag: str = "WAM:") -> Dict[str, Any]:
+        """Remove all firewall filter/NAT rules created by this app."""
+        try:
+            removed = 0
+            for section in (("ip", "firewall", "filter"), ("ip", "firewall", "nat")):
+                path = self.api.path(*section)
+                ids = [
+                    item.get(".id")
+                    for item in self.api.path(*section)
+                    if (item.get("comment") or "").startswith(tag)
+                ]
+                for entry_id in ids:
+                    path.remove(entry_id)
+                    removed += 1
+            return {"success": True, "removed": removed}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"remove_managed_firewall failed: {exc}") from exc
+
     def remove_hotspot_active_by_mac(self, mac_address: str) -> Dict[str, Any]:
         """Drop active hotspot sessions for a MAC (force re-login)."""
         try:

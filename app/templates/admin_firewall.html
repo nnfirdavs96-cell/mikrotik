@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Firewall{% endblock %}
+{% block heading %}Firewall (MikroTik){% endblock %}
+{% block content %}
+<div class="alert alert-warning">
+    <strong>Внимание!</strong> Перед применением сделайте <strong>backup MikroTik</strong>
+    и тестируйте на отдельной гостевой сети. Правило <code>drop</code> ограничено
+    только гостевой подсетью, поэтому админская сеть и API не блокируются. Все
+    правила помечаются комментарием <code>WAM:</code> и применяются идемпотентно
+    (повтор не создаёт дубликатов).
+</div>
+
+<div class="row g-4">
+<div class="col-lg-6">
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Параметры</h6>
+    <form class="row g-2">
+        <div class="col-12">
+            <label class="form-label">Гостевая подсеть (CIDR)</label>
+            <input name="guest_network" value="{{ params.guest_network }}" class="form-control" placeholder="192.168.50.0/24">
+        </div>
+        <div class="col-8">
+            <label class="form-label">IP сервера портала</label>
+            <input name="server_ip" value="{{ params.server_ip }}" class="form-control" placeholder="192.168.0.162">
+        </div>
+        <div class="col-4">
+            <label class="form-label">Порт</label>
+            <input name="server_port" value="{{ params.server_port }}" class="form-control" placeholder="8000">
+        </div>
+        <div class="col-6">
+            <label class="form-label">WAN interface-list (опц.)</label>
+            <input name="wan" value="{{ params.wan }}" class="form-control" placeholder="WAN">
+        </div>
+        <div class="col-6">
+            <label class="form-label">Address-list</label>
+            <input name="allowed_list" value="{{ params.allowed_list }}" class="form-control">
+        </div>
+        <div class="col-12 form-check ms-2">
+            <input type="checkbox" name="captive" class="form-check-input" id="captive" {{ 'checked' if params.captive else '' }}>
+            <label class="form-check-label" for="captive">Добавить captive-редирект (dst-nat HTTP → портал)</label>
+        </div>
+        <div class="col-12 d-flex gap-2 mt-2">
+            <button class="btn btn-outline-secondary" formmethod="get" formaction="/admin/firewall">Предпросмотр</button>
+            <button class="btn btn-primary js-confirm" formmethod="post" formaction="/admin/firewall/apply">Применить правила</button>
+        </div>
+    </form>
+    <hr>
+    <form method="post" action="/admin/firewall/remove" class="js-confirm">
+        <button class="btn btn-outline-danger btn-sm">Удалить все правила WAM</button>
+    </form>
+</div></div>
+</div>
+
+<div class="col-lg-6">
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Предпросмотр (что будет добавлено)</h6>
+    <pre class="small mb-0" style="white-space:pre-wrap">{% for line in preview %}{{ line }}
+{% endfor %}</pre>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Сейчас применено (WAM:)</h6>
+    {% if not current.success %}
+        <div class="text-muted small">{{ current.message }} {{ current.details or '' }}</div>
+    {% elif current.rules %}
+        <table class="table table-sm">
+            <thead><tr><th>Раздел</th><th>Chain</th><th>Action</th><th>Комментарий</th></tr></thead>
+            <tbody>
+            {% for r in current.rules %}
+                <tr><td>{{ r.section }}</td><td>{{ r.chain }}</td><td>{{ r.action }}</td><td class="small">{{ r.comment }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="text-muted small">Правил WAM пока нет.</div>
+    {% endif %}
+</div></div>
+</div>
+</div>
+{% endblock %}
