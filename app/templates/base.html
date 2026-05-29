@@ -11,6 +11,7 @@
 </head>
 <body>
 <div class="bg-parallax"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+<div class="waves"></div>
 <div class="d-flex app-shell">
     <!-- Sidebar -->
     <nav class="sidebar bg-dark text-white p-3">
@@ -34,11 +35,15 @@
         <a class="nav-link text-white" href="/admin/logout"><i class="bi bi-box-arrow-right"></i> Выход</a>
         <a class="nav-link text-white-50 small" href="/portal" target="_blank">Открыть портал →</a>
     </nav>
+    <div class="sb-backdrop" onclick="toggleSidebar()"></div>
 
     <!-- Main -->
     <div class="flex-grow-1">
-        <nav class="navbar border-bottom px-4">
-            <span class="navbar-brand mb-0 h6">{% block heading %}Панель администратора{% endblock %}</span>
+        <nav class="navbar border-bottom px-3">
+            <div class="d-flex align-items-center gap-2">
+                <button class="sb-toggle" type="button" onclick="toggleSidebar()" title="Скрыть / показать меню"><i class="bi bi-list"></i></button>
+                <span class="navbar-brand mb-0 h6">{% block heading %}Панель администратора{% endblock %}</span>
+            </div>
             <div class="d-flex align-items-center gap-3">
                 <button class="theme-toggle" type="button" onclick="toggleTheme()" title="Светлая / тёмная тема"><i class="bi bi-moon-stars-fill"></i></button>
                 <span class="text-muted small">v{{ app_version }}</span>
