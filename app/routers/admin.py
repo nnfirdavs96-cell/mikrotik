@@ -27,7 +27,12 @@ from ..models import (
     Tariff,
 )
 from ..mikrotik.client import MikroTikError
-from ..mikrotik.service import build_client, get_active_device, get_capsman_for_device
+from ..mikrotik.service import (
+    build_client,
+    get_active_device,
+    get_capsman_for_device,
+    get_hotspot_for_device,
+)
 from ..services import clients as clients_service
 from ..services import mikrotik_devices as devices_service
 from ..services import settings_store
@@ -287,6 +292,7 @@ def mikrotik_delete(request: Request, device_id: int, db: Session = Depends(get_
 def connected_clients(request: Request, db: Session = Depends(get_db), admin=Depends(require_admin)):
     device = get_active_device(db)
     leases = []
+    hotspot_active = []
     error = None
     if device is None:
         error = "Нет активного MikroTik устройства."
@@ -312,6 +318,9 @@ def connected_clients(request: Request, db: Session = Depends(get_db), admin=Dep
             error = f"MikroTik API connection failed: {exc}"
         finally:
             mk_client.close()
+        # Best-effort hotspot active sessions (empty if hotspot is not used).
+        hres = get_hotspot_for_device(device)
+        hotspot_active = hres.get("active", []) if hres.get("success") else []
     return render(
         request,
         "admin_connected_clients.html",
@@ -319,6 +328,7 @@ def connected_clients(request: Request, db: Session = Depends(get_db), admin=Dep
         error=error,
         device=device,
         clients=clients_service.search_clients(db),
+        hotspot_active=hotspot_active,
     )
 
 

@@ -69,10 +69,22 @@ def resolve_device_info(db: Session, ip_address: Optional[str]) -> dict:
             info["hostname"] = lease.get("hostname")
             info["found"] = True
         else:
-            info["message"] = (
-                "Не удалось определить устройство. Переподключитесь к Wi-Fi и "
-                "попробуйте снова."
-            )
+            # Fallback: try the hotspot host table (when a Hotspot is used).
+            mac = None
+            try:
+                host = mk_client.find_hotspot_host_by_ip(ip_address)
+                mac = host.get("mac_address") if host else None
+            except MikroTikError:
+                mac = None  # hotspot not configured / unavailable — ignore
+            if mac:
+                info["ip"] = ip_address
+                info["mac"] = mac
+                info["found"] = True
+            else:
+                info["message"] = (
+                    "Не удалось определить устройство. Переподключитесь к Wi-Fi и "
+                    "попробуйте снова."
+                )
     except MikroTikError as exc:
         info["message"] = f"MikroTik API connection failed: {exc}"
     finally:

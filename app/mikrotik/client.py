@@ -495,3 +495,148 @@ class MikroTikAPIClient:
                 break
 
         return {"stack": stack, "caps": caps, "clients": clients}
+
+    # ------------------------------------------------------------------
+    # Hotspot (Stage 3) — read + user management
+    # ------------------------------------------------------------------
+    def get_hotspot_hosts(self) -> List[Dict[str, Any]]:
+        """/ip/hotspot/host — devices known to the hotspot."""
+        try:
+            out = []
+            for item in self.api.path("ip", "hotspot", "host"):
+                out.append(
+                    {
+                        "address": item.get("address"),
+                        "mac_address": item.get("mac-address"),
+                        "to_address": item.get("to-address"),
+                        "server": item.get("server"),
+                        "uptime": item.get("uptime"),
+                        "authorized": item.get("authorized"),
+                    }
+                )
+            return out
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"get_hotspot_hosts failed: {exc}") from exc
+
+    def get_hotspot_active(self) -> List[Dict[str, Any]]:
+        """/ip/hotspot/active — currently logged-in hotspot sessions."""
+        try:
+            out = []
+            for item in self.api.path("ip", "hotspot", "active"):
+                out.append(
+                    {
+                        "user": item.get("user"),
+                        "address": item.get("address"),
+                        "mac_address": item.get("mac-address"),
+                        "server": item.get("server"),
+                        "uptime": item.get("uptime"),
+                        "login_by": item.get("login-by"),
+                    }
+                )
+            return out
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"get_hotspot_active failed: {exc}") from exc
+
+    def find_hotspot_host_by_ip(self, ip_address: str) -> Optional[Dict[str, Any]]:
+        for host in self.get_hotspot_hosts():
+            if host.get("address") == ip_address:
+                return host
+        return None
+
+    def get_hotspot_users(self) -> List[Dict[str, Any]]:
+        """/ip/hotspot/user — configured hotspot users."""
+        try:
+            out = []
+            for item in self.api.path("ip", "hotspot", "user"):
+                out.append(
+                    {
+                        "id": item.get(".id"),
+                        "name": item.get("name"),
+                        "mac_address": item.get("mac-address"),
+                        "profile": item.get("profile"),
+                        "disabled": item.get("disabled"),
+                        "comment": item.get("comment"),
+                    }
+                )
+            return out
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"get_hotspot_users failed: {exc}") from exc
+
+    def _find_hotspot_user_id(self, name: str) -> Optional[str]:
+        for item in self.api.path("ip", "hotspot", "user"):
+            if item.get("name") == name:
+                return item.get(".id")
+        return None
+
+    def add_hotspot_user(
+        self,
+        name: str,
+        mac_address: Optional[str] = None,
+        password: Optional[str] = None,
+        profile: Optional[str] = None,
+        comment: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a hotspot user (no duplicate by name)."""
+        try:
+            existing = self._find_hotspot_user_id(name)
+            if existing:
+                return {"success": True, "already": True, "id": existing}
+            kwargs: Dict[str, Any] = {"name": name}
+            if mac_address:
+                kwargs["mac-address"] = mac_address
+            if password:
+                kwargs["password"] = password
+            if profile:
+                kwargs["profile"] = profile
+            if comment:
+                kwargs["comment"] = comment
+            new_id = self.api.path("ip", "hotspot", "user").add(**kwargs)
+            return {"success": True, "id": new_id}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"add_hotspot_user failed: {exc}") from exc
+
+    def set_hotspot_user_disabled(self, name: str, disabled: bool) -> Dict[str, Any]:
+        try:
+            uid = self._find_hotspot_user_id(name)
+            if not uid:
+                return {"success": False, "message": "Hotspot user not found"}
+            self.api.path("ip", "hotspot", "user").update(
+                **{".id": uid, "disabled": "yes" if disabled else "no"}
+            )
+            return {"success": True}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"set_hotspot_user_disabled failed: {exc}") from exc
+
+    def enable_hotspot_user(self, name: str) -> Dict[str, Any]:
+        return self.set_hotspot_user_disabled(name, False)
+
+    def disable_hotspot_user(self, name: str) -> Dict[str, Any]:
+        return self.set_hotspot_user_disabled(name, True)
+
+    def remove_hotspot_active_by_mac(self, mac_address: str) -> Dict[str, Any]:
+        """Drop active hotspot sessions for a MAC (force re-login)."""
+        try:
+            target = (mac_address or "").upper()
+            path = self.api.path("ip", "hotspot", "active")
+            ids = [
+                a.get(".id")
+                for a in self.api.path("ip", "hotspot", "active")
+                if (a.get("mac-address") or "").upper() == target
+            ]
+            for entry_id in ids:
+                path.remove(entry_id)
+            return {"success": True, "removed": len(ids)}
+        except MikroTikError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise MikroTikError(f"remove_hotspot_active_by_mac failed: {exc}") from exc
