@@ -1,9 +1,13 @@
 """Core access control: activate / deactivate / block clients.
 
-Each operation updates the MikroTik allowed_clients address-list (when a router
-is configured and reachable), updates the client record and writes an
-access_logs entry. MikroTik failures are captured, never raised, so the web UI
-and API keep working even when the router is offline.
+Two switchable access modes (ACCESS_MODE):
+- ``address_list`` (default): add/remove the client IP in the MikroTik
+  ``allowed_clients`` firewall address-list (+ optional speed queue).
+- ``hotspot``: enable/disable a MikroTik hotspot user keyed by the client MAC
+  (and drop the active session on deactivation).
+
+MikroTik failures are captured, never raised, so the web UI and API keep
+working even when the router is offline.
 """
 from typing import Optional
 
@@ -19,22 +23,49 @@ from ..models import (
     Client,
     utcnow,
 )
+from . import settings_store
 from .logs import log_access
 
 
+def _access_mode(db: Session) -> str:
+    return settings_store.effective(db).get("ACCESS_MODE", "address_list")
+
+
 def activate_client(db: Session, client: Client, reason: str = "manual") -> dict:
-    """Set client active and add its IP to allowed_clients."""
+    """Grant internet access according to the configured access mode."""
     old_status = client.status
     device = get_active_device(db)
+    mode = _access_mode(db)
 
     mk_ok = False
     mk_result: Optional[str] = None
     mk_error: Optional[str] = None
 
-    if not client.ip_address:
-        mk_error = "Client has no IP address (no DHCP lease yet)"
-    elif device is None:
+    if device is None:
         mk_error = "No active MikroTik device configured"
+    elif mode == "hotspot":
+        if not client.mac_address:
+            mk_error = "Нет MAC клиента (нужен для hotspot-режима) — привяжите устройство"
+        else:
+            mk_client = build_client(device)
+            try:
+                cfg = settings_store.effective(db)
+                name = client.mac_address
+                mk_client.add_hotspot_user(
+                    name,
+                    mac_address=client.mac_address,
+                    profile=cfg.get("ACCESS_HOTSPOT_PROFILE") or None,
+                    comment=f"wifi client_id={client.id} phone={client.phone}",
+                )
+                mk_client.enable_hotspot_user(name)
+                mk_ok = True
+                mk_result = "hotspot user enabled"
+            except MikroTikError as exc:
+                mk_error = str(exc)
+            finally:
+                mk_client.close()
+    elif not client.ip_address:
+        mk_error = "Client has no IP address (no DHCP lease yet)"
     elif client.ip_address == device.host:
         mk_error = (
             "IP клиента совпадает с IP роутера — привяжите устройство из DHCP "
@@ -105,9 +136,10 @@ def deactivate_client(
     set_status: int = STATUS_INACTIVE,
     action: str = "deactivate",
 ) -> dict:
-    """Remove client IP from allowed_clients and set its status."""
+    """Revoke internet access according to the configured access mode."""
     old_status = client.status
     device = get_active_device(db)
+    mode = _access_mode(db)
 
     mk_ok = False
     mk_result: Optional[str] = None
@@ -115,6 +147,22 @@ def deactivate_client(
 
     if device is None:
         mk_error = "No active MikroTik device configured"
+    elif mode == "hotspot":
+        if not client.mac_address:
+            mk_ok = True
+            mk_result = "no MAC; nothing to disable"
+        else:
+            mk_client = build_client(device)
+            try:
+                name = client.mac_address
+                mk_client.disable_hotspot_user(name)
+                mk_client.remove_hotspot_active_by_mac(client.mac_address)
+                mk_ok = True
+                mk_result = "hotspot user disabled"
+            except MikroTikError as exc:
+                mk_error = str(exc)
+            finally:
+                mk_client.close()
     else:
         mk_client = build_client(device)
         try:
@@ -165,7 +213,7 @@ def deactivate_client(
 
 
 def block_client(db: Session, client: Client) -> dict:
-    """Block a client (status=4) and remove it from allowed_clients."""
+    """Block a client (status=4) and revoke access."""
     return deactivate_client(
         db, client, set_status=STATUS_BLOCKED, action="block"
     )

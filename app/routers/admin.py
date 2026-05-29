@@ -992,6 +992,24 @@ def firewall_remove(request: Request, db: Session = Depends(get_db), admin=Depen
     return _redirect("/admin/firewall")
 
 
+@router.post("/integrations/access")
+def integrations_access(
+    request: Request,
+    ACCESS_MODE: str = Form("address_list"),
+    ACCESS_HOTSPOT_PROFILE: str = Form(""),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    if ACCESS_MODE not in ("address_list", "hotspot"):
+        ACCESS_MODE = "address_list"
+    settings_store.save(
+        db,
+        {"ACCESS_MODE": ACCESS_MODE, "ACCESS_HOTSPOT_PROFILE": ACCESS_HOTSPOT_PROFILE.strip()},
+    )
+    flash(request, f"Режим доступа: {ACCESS_MODE}.", "success")
+    return _redirect("/admin/integrations")
+
+
 @router.post("/integrations/test-sms")
 def integrations_test_sms(
     request: Request,

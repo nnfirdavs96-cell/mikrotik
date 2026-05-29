@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # Keep False for MVP testing without hardware.
     PORTAL_REQUIRE_LEASE: bool = False
 
+    # ----- Access control mode -----
+    # address_list (default) = firewall allowed_clients; hotspot = hotspot users.
+    ACCESS_MODE: str = "address_list"
+    ACCESS_HOTSPOT_PROFILE: str = ""  # optional hotspot user profile name
+
     # ----- Stage 2: speed / traffic limits on MikroTik -----
     # Apply per-tariff speed limits via MikroTik simple queues on activation.
     APPLY_QUEUES: bool = True

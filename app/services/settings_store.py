@@ -36,7 +36,9 @@ PAYMENT_KEYS = [
     "PAYMENT_ID_FIELD",
 ]
 
-ALL_KEYS = SMS_KEYS + PAYMENT_KEYS + ["PUBLIC_BASE_URL"]
+ACCESS_KEYS = ["ACCESS_MODE", "ACCESS_HOTSPOT_PROFILE"]
+
+ALL_KEYS = SMS_KEYS + PAYMENT_KEYS + ACCESS_KEYS + ["PUBLIC_BASE_URL"]
 
 # Fields that hold secrets — never rendered back to the form in clear text.
 SECRET_KEYS = {"SMS_API_KEY", "PAYMENT_API_KEY"}
