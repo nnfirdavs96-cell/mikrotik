@@ -1,9 +1,11 @@
 """Admin panel routes (session-cookie protected)."""
+import csv
 import datetime as dt
+import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -57,6 +59,24 @@ def _parse_dt(value: Optional[str]) -> Optional[dt.datetime]:
         except ValueError:
             continue
     return None
+
+
+def _fmt_dt(value: Optional[dt.datetime]) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S") if value else ""
+
+
+def _csv_response(filename: str, header: list, rows: list) -> Response:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(rows)
+    # Prepend BOM so Excel opens UTF-8 (Cyrillic) correctly.
+    content = "﻿" + buf.getvalue()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +337,39 @@ def clients_list(
     )
 
 
+@router.get("/clients.csv")
+def clients_csv(
+    request: Request,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    status_int = None
+    if status not in (None, "", "all"):
+        try:
+            status_int = int(status)
+        except ValueError:
+            status_int = None
+    clients = clients_service.search_clients(db, query=q, status=status_int)
+    header = [
+        "id", "phone", "phone_verified", "mac_address", "ip_address",
+        "hostname", "status", "tariff", "mikrotik_id", "expires_at",
+        "created_at", "activated_at", "deactivated_at",
+    ]
+    rows = [
+        [
+            c.id, c.phone, int(bool(c.phone_verified)), c.mac_address or "",
+            c.ip_address or "", c.hostname or "", c.status_label,
+            c.tariff.name if c.tariff else "", c.mikrotik_id or "",
+            _fmt_dt(c.expires_at), _fmt_dt(c.created_at),
+            _fmt_dt(c.activated_at), _fmt_dt(c.deactivated_at),
+        ]
+        for c in clients
+    ]
+    return _csv_response("clients.csv", header, rows)
+
+
 @router.get("/clients/{client_id}/edit")
 def client_edit_form(request: Request, client_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
     client = clients_service.get_client(db, client_id)
@@ -554,6 +607,40 @@ def payments_list(
         status=status or "",
         phone=phone or "",
     )
+
+
+@router.get("/payments.csv")
+def payments_csv(
+    request: Request,
+    status: Optional[str] = None,
+    phone: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    query = db.query(Payment).order_by(Payment.id.desc())
+    if status:
+        query = query.filter(Payment.status == status)
+    if phone:
+        ids = [c.id for c in db.query(Client).filter(Client.phone.ilike(f"%{phone}%")).all()]
+        query = query.filter(Payment.client_id.in_(ids or [-1]))
+    payments = query.all()
+    client_map = {c.id: c for c in db.query(Client).all()}
+    header = [
+        "id", "client_id", "phone", "tariff_id", "amount", "currency",
+        "provider", "provider_payment_id", "status", "created_at",
+        "paid_at", "error_message",
+    ]
+    rows = [
+        [
+            p.id, p.client_id or "",
+            client_map[p.client_id].phone if p.client_id in client_map else "",
+            p.tariff_id or "", p.amount, p.currency, p.provider,
+            p.provider_payment_id or "", p.status, _fmt_dt(p.created_at),
+            _fmt_dt(p.paid_at), p.error_message or "",
+        ]
+        for p in payments
+    ]
+    return _csv_response("payments.csv", header, rows)
 
 
 @router.get("/sms-logs")

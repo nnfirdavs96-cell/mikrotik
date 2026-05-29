@@ -15,6 +15,9 @@
     <div class="col-md-2"><button class="btn btn-primary w-100">Фильтр</button></div>
     <div class="col-md-2"><a href="/admin/payments" class="btn btn-outline-secondary w-100">Сброс</a></div>
 </form>
+<div class="d-flex justify-content-end mb-2">
+    <a href="/admin/payments.csv?status={{ status|urlencode }}&phone={{ phone|urlencode }}" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> Экспорт CSV</a>
+</div>
 <div class="card"><div class="card-body table-responsive">
 <table class="table table-sm align-middle">
     <thead><tr><th>ID</th><th>Клиент</th><th>Телефон</th><th>Сумма</th><th>Провайдер</th><th>Статус</th><th>Создан</th><th>Оплачен</th><th>Ошибка</th></tr></thead>
