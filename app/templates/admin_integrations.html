@@ -4,6 +4,29 @@
 {% block content %}
 <p class="text-muted">Настройки сохраняются в базе и переопределяют <code>.env</code>. Секретные ключи не отображаются — оставьте поле пустым, чтобы не менять.</p>
 
+<div class="card mb-4"><div class="card-body">
+    <h6 class="card-title">Режим доступа в интернет
+        <span class="badge bg-info text-dark">{{ cfg.ACCESS_MODE }}</span>
+    </h6>
+    <form method="post" action="/admin/integrations/access" class="row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label">Механизм</label>
+            <select name="ACCESS_MODE" class="form-select">
+                <option value="address_list" {% if cfg.ACCESS_MODE=='address_list' %}selected{% endif %}>address-list (firewall allowed_clients)</option>
+                <option value="hotspot" {% if cfg.ACCESS_MODE=='hotspot' %}selected{% endif %}>hotspot (hotspot users по MAC)</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Hotspot profile (опц.)</label>
+            <input name="ACCESS_HOTSPOT_PROFILE" value="{{ cfg.ACCESS_HOTSPOT_PROFILE }}" class="form-control" placeholder="default">
+        </div>
+        <div class="col-md-3">
+            <button class="btn btn-primary w-100">Сохранить режим</button>
+        </div>
+    </form>
+    <div class="form-text">hotspot-режим требует настроенного Hotspot на MikroTik и MAC у клиента; address-list — текущий способ.</div>
+</div></div>
+
 <div class="row g-4">
 <!-- SMS -->
 <div class="col-lg-6">
