@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import require_api_key
-from ..mikrotik.service import build_client
+from ..mikrotik.service import build_client, get_capsman_for_device
 from ..schemas import MikroTikCreate, MikroTikOut
 from ..services import clients as clients_service
 from ..services import mikrotik_devices as devices_service
@@ -75,3 +75,9 @@ def connected_clients(device_id: int, db: Session = Depends(get_db)):
             }
         )
     return {"success": True, "clients": enriched}
+
+
+@router.get("/{device_id}/capsman")
+def capsman(device_id: int, db: Session = Depends(get_db)):
+    device = _get_or_404(db, device_id)
+    return get_capsman_for_device(device)

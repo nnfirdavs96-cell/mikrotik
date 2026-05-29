@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Точки доступа{% endblock %}
+{% block heading %}Точки доступа (CAPsMAN){% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+    <div>
+        {% if device %}<span class="text-muted">Контроллер: <strong>{{ device.name }}</strong></span>{% endif %}
+        {% if data and data.stack %}<span class="badge bg-info text-dark ms-2">стек: {{ data.stack }}</span>{% endif %}
+    </div>
+    <a href="/admin/access-points" class="btn btn-primary btn-sm"><i class="bi bi-arrow-repeat"></i> Обновить</a>
+</div>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+{% if data %}
+<div class="card mb-4"><div class="card-body">
+    <h6 class="card-title">Точки доступа (CAP) — {{ data.caps|length }}</h6>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Имя</th><th>Identity</th><th>MAC / адрес</th><th>Состояние</th><th>Плата</th><th>Версия</th></tr></thead>
+        <tbody>
+        {% for cap in data.caps %}
+            <tr>
+                <td>{{ cap.name or '—' }}</td>
+                <td>{{ cap.identity or '—' }}</td>
+                <td class="small">{{ cap.address or '—' }}</td>
+                <td>{% if cap.state %}<span class="badge bg-success">{{ cap.state }}</span>{% else %}—{% endif %}</td>
+                <td class="small">{{ cap.board or '—' }}</td>
+                <td class="small">{{ cap.version or '—' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-muted">CAP не зарегистрированы (или используется не-CAPsMAN режим)</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Подключённые Wi-Fi клиенты — {{ data.clients|length }}</h6>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead><tr><th>MAC</th><th>Интерфейс</th><th>SSID</th><th>Сигнал</th><th>Аптайм</th><th>Зарегистрирован</th><th>Статус</th></tr></thead>
+        <tbody>
+        {% for cl in data.clients %}
+            <tr>
+                <td class="small">{{ cl.mac or '—' }}</td>
+                <td class="small">{{ cl.interface or '—' }}</td>
+                <td>{{ cl.ssid or '—' }}</td>
+                <td class="small">{{ cl.signal or '—' }}</td>
+                <td class="small">{{ cl.uptime or '—' }}</td>
+                <td>{% if cl.registered %}<span class="badge bg-success">да</span>{% else %}<span class="badge bg-secondary">нет</span>{% endif %}</td>
+                <td>{% if cl.client_status is not none %}<span class="badge bg-{{ status_colors[cl.client_status] }}">{{ status_labels[cl.client_status] }}</span>{% else %}—{% endif %}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7" class="text-muted">Нет подключённых клиентов</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div></div>
+{% endif %}
+{% endblock %}

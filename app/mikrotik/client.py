@@ -392,3 +392,79 @@ class MikroTikAPIClient:
             raise
         except Exception as exc:  # noqa: BLE001
             raise MikroTikError(f"get_simple_queue_bytes failed: {exc}") from exc
+
+    # ------------------------------------------------------------------
+    # CAPsMAN monitoring (read-only) — Stage 3
+    # ------------------------------------------------------------------
+    def _try_path_list(self, *path) -> tuple:
+        """Return (ok, rows). ok=False if the path/command is unsupported."""
+        try:
+            return True, list(self.api.path(*path))
+        except Exception:  # noqa: BLE001
+            return False, []
+
+    @staticmethod
+    def _norm_cap(c: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "name": c.get("name") or c.get("identity") or c.get("common-name"),
+            "identity": c.get("identity") or c.get("common-name"),
+            "address": c.get("address") or c.get("mac-address"),
+            "state": c.get("state"),
+            "version": c.get("version"),
+            "board": c.get("board-name") or c.get("board"),
+            "radios": c.get("radio-mac") or c.get("radios") or "",
+        }
+
+    @staticmethod
+    def _norm_reg(r: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "mac": r.get("mac-address"),
+            "interface": r.get("interface"),
+            "ssid": r.get("ssid"),
+            "signal": (
+                r.get("signal")
+                or r.get("rx-signal")
+                or r.get("signal-strength")
+            ),
+            "uptime": r.get("uptime"),
+            "tx_rate": r.get("tx-rate"),
+            "rx_rate": r.get("rx-rate"),
+        }
+
+    def get_capsman_info(self) -> Dict[str, Any]:
+        """Read CAPs and connected wireless clients.
+
+        Auto-detects the wireless stack: new ``/interface/wifi`` (RouterOS 7),
+        legacy ``/caps-man``, or plain ``/interface/wireless``.
+        Returns {stack, caps[], clients[]}.
+        """
+        _ = self.api  # ensure connected (raises MikroTikError if unreachable)
+
+        reg_candidates = [
+            ("wifi", ("interface", "wifi", "registration-table")),
+            ("caps-man", ("caps-man", "registration-table")),
+            ("wireless", ("interface", "wireless", "registration-table")),
+        ]
+        cap_candidates = [
+            ("interface", "wifi", "capsman", "remote-cap"),
+            ("interface", "wifi", "cap"),
+            ("caps-man", "remote-cap"),
+        ]
+
+        stack = None
+        clients: List[Dict[str, Any]] = []
+        for st, path in reg_candidates:
+            ok, rows = self._try_path_list(*path)
+            if ok:
+                stack = st
+                clients = [self._norm_reg(r) for r in rows]
+                break
+
+        caps: List[Dict[str, Any]] = []
+        for path in cap_candidates:
+            ok, rows = self._try_path_list(*path)
+            if ok:
+                caps = [self._norm_cap(r) for r in rows]
+                break
+
+        return {"stack": stack, "caps": caps, "clients": clients}

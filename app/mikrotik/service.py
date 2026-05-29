@@ -60,3 +60,22 @@ def get_leases_for_device(device: MikroTikDevice) -> dict:
         }
     finally:
         client.close()
+
+
+def get_capsman_for_device(device: MikroTikDevice) -> dict:
+    """Fetch CAPsMAN info (APs + connected clients) as a structured dict."""
+    client = build_client(device)
+    try:
+        data = client.get_capsman_info()
+        return {"success": True, **data}
+    except MikroTikError as exc:
+        return {
+            "success": False,
+            "message": "MikroTik API connection failed",
+            "details": str(exc),
+            "stack": None,
+            "caps": [],
+            "clients": [],
+        }
+    finally:
+        client.close()

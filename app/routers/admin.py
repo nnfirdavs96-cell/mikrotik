@@ -27,7 +27,7 @@ from ..models import (
     Tariff,
 )
 from ..mikrotik.client import MikroTikError
-from ..mikrotik.service import build_client, get_active_device
+from ..mikrotik.service import build_client, get_active_device, get_capsman_for_device
 from ..services import clients as clients_service
 from ..services import mikrotik_devices as devices_service
 from ..services import tariffs as tariffs_service
@@ -308,6 +308,27 @@ def connected_clients(request: Request, db: Session = Depends(get_db), admin=Dep
         finally:
             mk_client.close()
     return render(request, "admin_connected_clients.html", leases=leases, error=error, device=device)
+
+
+@router.get("/access-points")
+def access_points(request: Request, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    device = get_active_device(db)
+    data = None
+    error = None
+    if device is None:
+        error = "Нет активного MikroTik устройства."
+    else:
+        res = get_capsman_for_device(device)
+        if res.get("success"):
+            data = res
+            # Cross-reference connected Wi-Fi clients with registered clients.
+            for c in data["clients"]:
+                reg = clients_service.get_client_by_mac(db, c["mac"]) if c.get("mac") else None
+                c["registered"] = reg is not None
+                c["client_status"] = reg.status if reg else None
+        else:
+            error = res.get("details") or res.get("message")
+    return render(request, "admin_access_points.html", device=device, data=data, error=error)
 
 
 # ---------------------------------------------------------------------------
