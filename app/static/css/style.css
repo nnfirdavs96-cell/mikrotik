@@ -7,6 +7,8 @@
   --accent-2: #06b6d4;
   --radius: 1rem;
   --app-bg: #eaf0fb;
+  --surf: #e8f3ff;   /* water surface (top) */
+  --deep: #b9d2f5;   /* depth (bottom)      */
   --glass: rgba(255, 255, 255, 0.62);
   --glass-strong: rgba(255, 255, 255, 0.78);
   --glass-border: rgba(255, 255, 255, 0.55);
@@ -19,6 +21,8 @@
 }
 [data-bs-theme="dark"] {
   --app-bg: #060a16;
+  --surf: #0a2036;   /* dim surface */
+  --deep: #03070f;   /* abyss       */
   --glass: rgba(20, 27, 46, 0.55);
   --glass-strong: rgba(20, 27, 46, 0.78);
   --glass-border: rgba(255, 255, 255, 0.08);
@@ -30,7 +34,43 @@
 }
 
 html, body { min-height: 100%; }
-body { background: var(--app-bg); transition: background .45s ease; }
+/* Depth gradient: light surface at the top, darker as you "dive" down. */
+body {
+  background: linear-gradient(180deg, var(--surf) 0%, var(--deep) 100%) fixed;
+  transition: background .45s ease;
+}
+
+/* ---------- Light rays (god rays) from the surface ---------- */
+.rays { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.rays::before, .rays::after {
+  content: ""; position: absolute; top: -25%; width: 36vmax; height: 150vh;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 70%);
+  filter: blur(10px); transform: rotate(16deg); transform-origin: top center;
+  animation: rayShift 13s ease-in-out infinite alternate;
+}
+.rays::before { left: 8%; }
+.rays::after { left: 58%; transform: rotate(-13deg); animation-duration: 17s; }
+[data-bs-theme="dark"] .rays::before,
+[data-bs-theme="dark"] .rays::after { background: linear-gradient(180deg, rgba(125, 211, 252, .12), transparent 70%); }
+@keyframes rayShift {
+  from { opacity: .5; transform: rotate(16deg) translateX(-4vw); }
+  to   { opacity: .9; transform: rotate(20deg) translateX(4vw); }
+}
+
+/* ---------- Rising bubbles (injected by app.js) ---------- */
+.bubble {
+  position: absolute; bottom: -8vh; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .75), rgba(255, 255, 255, .06));
+  box-shadow: inset 0 0 6px rgba(255, 255, 255, .4);
+  opacity: 0; animation: bubbleRise linear infinite;
+}
+[data-bs-theme="dark"] .bubble { background: radial-gradient(circle at 30% 30%, rgba(186, 230, 253, .55), rgba(186, 230, 253, .04)); }
+@keyframes bubbleRise {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  12%  { opacity: .55; }
+  88%  { opacity: .45; }
+  100% { transform: translateY(-118vh) translateX(var(--sway, 12px)); opacity: 0; }
+}
 
 /* ---------- Flowing "water" background (cohesive, not pasted) ---------- */
 .bg-parallax {

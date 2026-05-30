@@ -1,437 +1,461 @@
 # WiFi Access Manager
 
-MVP-система управления доступом клиентов к интернету через главный **MikroTik**.
-Клиент подключается к Wi-Fi, проходит регистрацию через captive portal (телефон
-→ SMS-код → выбор тарифа → оплата), после чего его IP автоматически добавляется
-в MikroTik `address-list allowed_clients` и интернет активируется.
+Система управления платным доступом к интернету через **MikroTik** (Captive
+Portal / Hotspot / firewall address-list). Клиент подключается к Wi-Fi, сам
+проходит регистрацию через мобильный портал (телефон → SMS/OTP → тариф →
+оплата), после чего ему **автоматически** открывается интернет. Администратор
+управляет всем из web-панели.
 
-Управление MikroTik выполняется **только через RouterOS API** (порты `8728` /
-`8729`-SSL). SSH / telnet / WinBox / CLI **не используются**.
-
----
-
-## Статус и дорожная карта
-
-### ✅ Этап 1 — MVP (готово)
-
-| Блок | Что умеет |
-|------|-----------|
-| **Client Portal** `/portal` | телефон → SMS/OTP → выбор тарифа → оплата → авто-активация (IP в `allowed_clients`) |
-| **Admin Panel** `/admin` | dashboard, MikroTik (CRUD + Test Connection), клиенты (поиск/фильтр/activate/deactivate/block/edit), тарифы, платежи, SMS/OTP-логи, access-логи, синхронизация, настройки, подключенные клиенты |
-| **MikroTik module** | RouterOS API: DHCP leases, add/remove/sync `allowed_clients`; не падает при офлайн-роутере |
-| **REST API** | `X-API-Key`; clients, mikrotik, sync, payments webhook, tasks/expire, `/health` |
-| **Провайдеры** | mock SMS + mock оплата (для теста без внешних сервисов) |
-| **Прочее** | session-auth админки (пароль — hash), OTP — hash, Alembic, systemd, авто-сид админа и тарифов |
-
-### ✅ Этап 2 — расширение (готово)
-
-| Фича | Что делает | Флаг в `.env` |
-|------|-----------|---------------|
-| **Лимит скорости** | simple queue на IP клиента из `tariff.speed_limit` при активации, удаление при деактивации | `APPLY_QUEUES` |
-| **Контроль трафика** | планировщик читает байты очереди и деактивирует при превышении `tariff.traffic_limit` | `TRAFFIC_CHECK_ENABLED` |
-| **Авто-expire** | встроенный APScheduler вместо cron (старт в lifespan) | `SCHEDULER_ENABLED` |
-| **Реальный SMS** | `HTTPSMSProvider` — любой REST SMS-шлюз через `.env` | `SMS_PROVIDER=http` |
-| **Реальная оплата** | `HTTPPaymentProvider` — редирект на шлюз + подтверждение по webhook | `PAYMENT_PROVIDER=http` |
-
-Подробности и переменные — в разделе [«Этап 2 (реализовано)»](#этап-2-реализовано).
-
-### 🟡 Этап 3 — в работе
-
-| Фича | Статус |
-|------|--------|
-| **Шифрование пароля MikroTik** в БД (Fernet, ключ в `.env`, обратная совместимость с plaintext) | ✅ готово |
-| **Экспорт CSV** клиентов и платежей (с учётом фильтров) | ✅ готово |
-| **Личный кабинет** клиента (вход по номеру, история, продление тарифа) | ✅ готово |
-| **Мониторинг CAPsMAN** (точки доступа + подключённые Wi-Fi клиенты) | ✅ готово |
-| Автоматический **captive redirect** (DNS/firewall) | ✅ готово |
-| **MikroTik Hotspot** (чтение хостов/сессий, MAC-fallback, управление users) | ✅ готово |
-| Готовые пресеты под конкретных SMS/платёжных провайдеров | 🔜 |
-
-### Как это работает (в двух словах)
-
-```
-Клиент → Wi-Fi → DHCP (MikroTik выдаёт IP)
-   → /portal: backend берёт IP (request.client.host) → по RouterOS API находит
-     DHCP lease → получает MAC/hostname
-   → клиент вводит телефон → OTP (mock: код в логах/на экране; http: реальный SMS)
-   → выбор тарифа → оплата (mock: тест-кнопка; http: редирект на шлюз → webhook)
-   → backend: status=active, expires_at=now+дни, IP в allowed_clients,
-     (опц.) simple queue со скоростью тарифа
-   → MikroTik firewall выпускает allowed_clients в интернет
-Планировщик: по истечению срока или превышению трафика → деактивация,
-   IP и очередь удаляются из MikroTik.
-```
+> Управление MikroTik выполняется **только через RouterOS API** (порты `8728` /
+> `8729`-SSL). SSH / telnet / WinBox / CLI не используются.
 
 ---
 
-## 1. Описание проекта
+## Содержание
 
-Система состоит из трёх частей:
+1. [Возможности](#возможности)
+2. [Архитектура](#архитектура)
+3. [Стек](#стек)
+4. [Быстрый старт](#быстрый-старт)
+5. [Конфигурация (.env)](#конфигурация-env)
+6. [Настройка MikroTik](#настройка-mikrotik)
+7. [Админ-панель](#админ-панель)
+8. [Клиентский портал](#клиентский-портал)
+9. [Режимы доступа](#режимы-доступа)
+10. [Фоновые задачи (scheduler)](#фоновые-задачи-scheduler)
+11. [Интеграции SMS и оплаты](#интеграции-sms-и-оплаты)
+12. [REST API](#rest-api)
+13. [Модели БД](#модели-бд)
+14. [Деплой (systemd)](#деплой-systemd)
+15. [Безопасность](#безопасность)
+16. [Диагностика проблем](#диагностика-проблем)
+17. [Структура проекта](#структура-проекта)
+18. [Статус и дальнейшее развитие](#статус-и-дальнейшее-развитие)
 
-| Часть | Назначение |
-|------|------------|
-| **Admin Panel** (`/admin`) | Управление MikroTik, клиентами, тарифами, платежами, логами; ручная активация/деактивация; синхронизация. |
-| **Client Portal** (`/portal`) | Самостоятельная регистрация клиента: телефон → SMS-код → тариф → оплата → доступ. |
-| **MikroTik API Service** | Работа с DHCP leases и firewall `address-list` через RouterOS API. |
+---
 
-Стек: Python 3, FastAPI, SQLAlchemy, Alembic, Jinja2, Bootstrap 5, SQLite
-(легко переключается на PostgreSQL через `DATABASE_URL`), Uvicorn, librouteros.
+## Возможности
 
-## 2. Архитектура работы
+**Клиентский портал**
+- Регистрация по номеру телефона, подтверждение через SMS/OTP (с TTL и
+  rate-limit), выбор тарифа, оплата, автоматическая активация интернета.
+- IP/MAC определяются автоматически из DHCP lease (или hotspot host) — клиент
+  их не вводит.
+- Личный кабинет: вход по номеру, история платежей, **продление тарифа** без
+  повторной регистрации.
+- Captive-редирект: портал открывается автоматически («Войти в сеть»).
+
+**Админ-панель**
+- Dashboard со статистикой, управление MikroTik (CRUD + Test Connection).
+- Клиенты: поиск/фильтр, activate/deactivate/block/delete/edit, ручная
+  привязка устройства из DHCP, редактируемые MAC/IP.
+- Подключенные клиенты (DHCP leases) с действиями прямо в таблице.
+- Точки доступа (CAPsMAN: CAP + Wi-Fi клиенты, hotspot-сессии).
+- Тарифы, платежи, SMS/OTP логи, расширенные access logs (actor/phone/mac/ip).
+- **Firewall** — применение правил MikroTik из UI по кнопке.
+- **Интеграции** — настройка SMS/оплаты и режима доступа из UI.
+- Синхронизация с MikroTik, настройки.
+- Светлая/тёмная тема, скрывающийся сайдбар, многослойный «водяной» фон.
+
+**Управление доступом** (переключаемый режим)
+- `address_list` — IP клиента в firewall `allowed_clients` + ограничение
+  скорости по тарифу через simple queue.
+- `hotspot` — hotspot-user по MAC (enable/disable + сброс сессии).
+
+**Автоматизация**
+- Авто-деактивация по истечению тарифа (scheduler).
+- Контроль трафика по тарифу (по счётчикам queue).
+- Периодическая синхронизация IP/hostname/last_seen из DHCP leases.
+
+**Безопасность**
+- Пароль MikroTik шифруется в БД (Fernet), пароль админа — hash, OTP — hash.
+- REST API защищён `X-API-Key`, все действия пишутся в access logs.
+
+---
+
+## Архитектура
 
 ```
-[Клиент Wi-Fi] --DHCP--> [MikroTik] <--RouterOS API--> [Backend (этот проект)]
-        |                                                      |
-        \--- HTTP --> [Captive Portal /portal] --------------/
-                                                              |
-                                          [SQLite/PostgreSQL] + [Admin /admin]
+[Клиент Wi-Fi] --DHCP--> [MikroTik контроллер (CAPsMAN)] <--RouterOS API--> [Backend]
+       |                         |  (раздаёт IP, гейтит доступ)                  |
+       |                         +-- CAP 1 ... CAP N (точки доступа)             |
+       \------- HTTP --> [Captive Portal /portal] -----------------------------/
+                                                          [SQLite/PostgreSQL] + [Admin /admin]
 ```
 
-- Backend определяет IP клиента (`request.client.host` / `X-Forwarded-For`).
-- По IP через RouterOS API находится DHCP lease → берётся MAC и hostname.
-- После оплаты IP добавляется в `allowed_clients`, firewall выпускает клиента в интернет.
+- Один главный MikroTik — **контроллер** (CAPsMAN), к нему подключены точки
+  доступа (CAP). Управляет точками сам MikroTik; приложение работает только с
+  контроллером.
+- DHCP-сервер один (на контроллере) → IP/MAC клиента определяются независимо от
+  того, к какой CAP он подключён; роуминг между CAP не рвёт сессию.
+- Доступ гейтится на контроллере (`allowed_clients` + firewall, либо hotspot) —
+  одинаково для всех точек.
 
-## 3. Схема работы клиента
-
+**Поток клиента:**
 ```
-Wi-Fi → /portal → [IP/MAC из DHCP lease] → ввод телефона → SMS-код →
-выбор тарифа → тестовая оплата → IP в allowed_clients → интернет
-```
-
-## 4. Схема работы администратора
-
-```
-/admin/login → Dashboard → добавить MikroTik → Test Connection →
-клиенты / тарифы / платежи / логи → ручная активация/деактивация → Sync
+Wi-Fi → DHCP → /portal: backend берёт IP (request.client.host) → по RouterOS API
+находит DHCP lease (или hotspot host) → MAC/hostname → телефон → OTP →
+тариф → оплата → status=active, expires_at=now+дни, доступ открыт на MikroTik
+→ интернет. По истечению/превышению трафика scheduler деактивирует.
 ```
 
-## 5. Требования к серверу
+---
 
-- Linux (Ubuntu Server 20.04+/22.04+ или CentOS/Rocky 8+).
-- Python 3.10+ (рекомендуется 3.11).
-- Сетевой доступ с backend-сервера к MikroTik по API-порту (8728/8729).
-- 512 МБ RAM достаточно для MVP.
+## Стек
 
-## 6. Установка на Ubuntu
+Python 3.10+ · FastAPI · SQLAlchemy 2 · Jinja2 · Bootstrap 5.3 · Uvicorn ·
+APScheduler · cryptography (Fernet) · passlib · httpx · **librouteros**
+(RouterOS API). БД: SQLite (по умолчанию), легко переключается на PostgreSQL
+через `DATABASE_URL`.
 
+---
+
+## Быстрый старт
+
+### Ubuntu / Debian
 ```bash
-apt update
-apt install python3 python3-venv python3-pip git -y
+apt update && apt install -y python3 python3-venv python3-pip git
 
 cd /opt
-git clone <project-url> wifi-access-manager
-cd wifi-access-manager
-
-python3 -m venv venv
-source venv/bin/activate
-
-pip install -r requirements.txt
-
-cp .env.example .env
-# отредактируйте .env (пароли, секреты)
-
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-## 7. Установка на CentOS / Rocky
-
-```bash
-dnf install python3 python3-pip git -y
-
-cd /opt
-git clone <project-url> wifi-access-manager
+git clone https://github.com/nnfirdavs96-cell/mikrotik.git wifi-access-manager
 cd wifi-access-manager
 
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env
+cp .env.example .env        # отредактируйте секреты
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## 8. Настройка .env
-
-Все настройки задаются через `.env` (см. `.env.example`):
-
-```
-APP_NAME=WiFi Access Manager
-APP_HOST=0.0.0.0
-APP_PORT=8000
-DATABASE_URL=sqlite:///./wifi_access.db
-SECRET_KEY=change_this_secret_key
-API_SECRET_KEY=change_this_api_key
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=strong_password
-DEFAULT_ALLOWED_LIST=allowed_clients
-DEFAULT_GUEST_NETWORK=192.168.50.0/24
-SMS_PROVIDER=mock
-PAYMENT_PROVIDER=mock
-DEFAULT_CURRENCY=TJS
-PORTAL_REQUIRE_LEASE=false
-```
-
-Переход на **PostgreSQL**:
-
-```
-DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/wifi
-```
-
-(установите драйвер: `pip install psycopg2-binary`).
-
-При первом запуске автоматически создаются: первый администратор (из `.env`),
-таблицы БД и несколько примеров тарифов.
-
-## 9. Запуск вручную
-
+### CentOS / Rocky
 ```bash
-source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+dnf install -y python3 python3-pip git
+# далее так же: venv, pip install, cp .env, uvicorn
 ```
 
-- Admin panel: `http://SERVER_IP:8000/admin`
-- Client portal: `http://SERVER_IP:8000/portal`
+После запуска:
+- Админка: `http://SERVER_IP:8000/admin` (логин/пароль из `.env`)
+- Портал: `http://SERVER_IP:8000/portal`
+- API docs (Swagger): `http://SERVER_IP:8000/docs`
 
-### Миграции (Alembic)
+При первом запуске автоматически создаются таблицы, первый администратор (из
+`.env`) и примеры тарифов. Схема БД авто-мигрируется (добавление новых колонок).
 
-Для MVP таблицы создаются автоматически при старте. Для управляемых миграций:
+---
 
+## Конфигурация (.env)
+
+Все настройки — через `.env` (см. `.env.example`). Часть из них можно менять и
+из админки (раздел «Интеграции») — значения в БД переопределяют `.env`.
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `APP_NAME` | WiFi Access Manager | Название |
+| `APP_HOST` / `APP_PORT` | 0.0.0.0 / 8000 | Хост/порт |
+| `DATABASE_URL` | sqlite:///./wifi_access.db | БД (PostgreSQL: `postgresql+psycopg2://...`) |
+| `SECRET_KEY` | change_this | Подпись сессий |
+| `API_SECRET_KEY` | change_this | Ключ REST API (`X-API-Key`) |
+| `ENCRYPTION_KEY` | (из SECRET_KEY) | Fernet-ключ шифрования пароля MikroTik |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | admin / … | Первый админ |
+| `DEFAULT_ALLOWED_LIST` | allowed_clients | Имя address-list |
+| `DEFAULT_GUEST_NETWORK` | 192.168.50.0/24 | Гостевая подсеть |
+| `MIKROTIK_TIMEOUT` | 10 | Таймаут API, сек |
+| `DEFAULT_CURRENCY` | TJS | Валюта |
+| `OTP_LENGTH` / `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` | 6 / 5 / 3 | OTP |
+| `OTP_RATE_LIMIT_MAX` / `_WINDOW_MINUTES` / `OTP_RESEND_COOLDOWN_SECONDS` | 5 / 60 / 60 | Анти-спам OTP |
+| `PORTAL_REQUIRE_LEASE` | false | Требовать DHCP lease для регистрации |
+| `ACCESS_MODE` | address_list | Режим доступа: `address_list` / `hotspot` |
+| `ACCESS_HOTSPOT_PROFILE` | (пусто) | Профиль hotspot-user |
+| `APPLY_QUEUES` / `QUEUE_PREFIX` | true / wam | Лимит скорости через simple queue |
+| `SCHEDULER_ENABLED` | true | Фоновый планировщик |
+| `EXPIRE_INTERVAL_MINUTES` | 10 | Период авто-expire |
+| `TRAFFIC_CHECK_ENABLED` / `_INTERVAL_MINUTES` | false / 15 | Контроль трафика |
+| `LEASE_SYNC_ENABLED` / `_INTERVAL_MINUTES` | false / 5 | Авто-синхронизация leases |
+| `CAPTIVE_REDIRECT_ENABLED` / `CAPTIVE_PORTAL_URL` | false / (пусто) | Captive-редирект |
+| `PUBLIC_BASE_URL` | (пусто) | Внешний URL портала (для return/callback/captive) |
+| `SMS_PROVIDER` / `SMS_API_*` | mock | SMS-провайдер (см. Интеграции) |
+| `PAYMENT_PROVIDER` / `PAYMENT_API_*` | mock | Платёжный шлюз (см. Интеграции) |
+
+Сгенерировать ключи:
 ```bash
-alembic upgrade head                       # применить миграции
-alembic revision --autogenerate -m "msg"   # создать новую миграцию
+python -c "import secrets; print(secrets.token_urlsafe(48))"                       # SECRET_KEY / API_SECRET_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"   # ENCRYPTION_KEY
 ```
 
-## 10. Настройка systemd
+---
 
-```bash
-cp systemd/wifi-access-manager.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now wifi-access-manager
-systemctl status wifi-access-manager
-```
+## Настройка MikroTik
 
-(файл сервиса см. `systemd/wifi-access-manager.service`).
-
-## 11. Настройка MikroTik API
-
-Включить API:
-
+### 1. Включить API
 ```
 /ip service enable api
 /ip service set api port=8728
-```
-
-Для SSL:
-
-```
+# для SSL:
 /ip service enable api-ssl
 /ip service set api-ssl port=8729
 ```
 
-Создать отдельного пользователя для API:
-
+### 2. Отдельный API-пользователь
 ```
 /user group add name=api-policy policy=read,write,api,test
 /user add name=api_user group=api-policy password=strong_password
 ```
 
-Ограничить доступ к API только с IP backend-сервера:
-
+### 3. Ограничить API только с IP сервера
 ```
 /ip firewall filter
-add chain=input src-address=<SERVER_IP> protocol=tcp dst-port=8728 action=accept comment="Allow MikroTik API from backend server"
-add chain=input protocol=tcp dst-port=8728 action=drop comment="Block MikroTik API from others"
+add chain=input src-address=<SERVER_IP> protocol=tcp dst-port=8728 action=accept comment="Allow API from backend"
+add chain=input protocol=tcp dst-port=8728 action=drop comment="Block API from others"
 ```
 
-## 12. Настройка firewall MikroTik
-
-> ⚠️ **ВНИМАНИЕ перед применением правил:**
-> - Сделайте **backup** MikroTik (см. п. 24).
-> - Сначала тестируйте на **отдельной guest Wi-Fi** сети.
-> - **Не применяйте** правила на основной офисной сети.
-> - Сначала добавьте **разрешающие** правила для админской сети.
-> - **Не применяйте drop rule** без проверки.
-> - API-порт MikroTik **нельзя** открывать в интернет.
-> - Разрешите доступ к API только с IP сервера, где работает программа.
-> - Для production используйте **API-SSL 8729**.
-
-Пример правил (гостевая сеть `192.168.50.0/24`, backend `<BACKEND_SERVER_IP>`):
-
+### 4. Firewall для гостевой сети
+Можно применить **из админки** (страница «Firewall», см. ниже) или вручную:
 ```
 /ip firewall filter
-add chain=forward src-address-list=allowed_clients action=accept comment="Allow paid WiFi clients"
-add chain=forward src-address=192.168.50.0/24 dst-address=<BACKEND_SERVER_IP> action=accept comment="Allow access to portal server"
-add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=53 action=accept comment="Allow DNS for guest clients"
-add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=67,68 action=accept comment="Allow DHCP for guest clients"
-add chain=forward src-address=192.168.50.0/24 action=drop comment="Block unpaid WiFi clients"
+add chain=forward src-address-list=allowed_clients action=accept comment="WAM: allow paid"
+add chain=forward src-address=192.168.50.0/24 dst-address=<SERVER_IP> action=accept comment="WAM: allow portal"
+add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=53 action=accept comment="WAM: DNS"
+add chain=forward src-address=192.168.50.0/24 protocol=udp dst-port=67,68 action=accept comment="WAM: DHCP"
+add chain=forward src-address=192.168.50.0/24 action=drop comment="WAM: block unpaid"
 
 /ip firewall nat
-add chain=srcnat src-address=192.168.50.0/24 out-interface-list=WAN action=masquerade comment="NAT guest WiFi"
+add chain=srcnat src-address=192.168.50.0/24 dst-address=<SERVER_IP> action=accept comment="WAM: no-nat portal"
+add chain=srcnat src-address=192.168.50.0/24 action=masquerade comment="WAM: NAT guest"
 ```
 
-## 13. Настройка guest Wi-Fi сети
+> ⚠️ Перед применением: сделайте **backup** (`/system backup save name=before-wam`),
+> тестируйте на **отдельной guest-сети**, не применяйте `drop` без проверки,
+> убедитесь, что админ-доступ к роутеру не пропал. Правило `drop` ограничено
+> только гостевой подсетью.
 
-- Выделите для гостей отдельную подсеть, например `192.168.50.0/24`.
-- Включите на ней DHCP-сервер MikroTik (из него берутся IP/MAC клиентов).
-- Backend-сервер должен быть доступен гостям (например `192.168.50.2`).
-- Комментарий, который программа пишет в `allowed_clients`:
-  `wifi-client | phone=<phone> | mac=<mac> | client_id=<id>`.
+### 5. Корректное определение IP клиента
+Чтобы backend видел **реальный IP клиента**, а не IP роутера, трафик
+гость→сервер портала **не должен маскарадиться** — нужно правило `no-nat`
+(см. выше, или включается на странице Firewall). Иначе пользуйтесь ручной
+привязкой устройства в админке.
 
-## 14. Как открыть web-панель администратора
+### 6. Captive-редирект (опц.)
+В `.env`: `CAPTIVE_REDIRECT_ENABLED=true`, `PUBLIC_BASE_URL=http://<SERVER_IP>:8000`.
+На MikroTik — dst-nat неоплаченного HTTP на портал (можно из страницы Firewall):
+```
+/ip firewall nat
+add chain=dstnat src-address=192.168.50.0/24 src-address-list=!allowed_clients \
+    protocol=tcp dst-port=80 action=dst-nat to-addresses=<SERVER_IP> to-ports=8000 comment="WAM: captive"
+```
+> HTTPS не перехватывается (так во всех captive-системах), но окно «Войти в сеть»
+> у телефонов появляется по HTTP-пробам и открывает портал.
 
-Откройте `http://SERVER_IP:8000/admin`, войдите с `ADMIN_USERNAME` /
-`ADMIN_PASSWORD` из `.env`.
-
-## 15. Как добавить MikroTik через web-панель
-
-`Admin → MikroTik → Добавить MikroTik`. Заполните name, host, port, username,
-password, Use SSL, Is Active, comment. Для MVP активным может быть только один
-MikroTik — при включении нового активного остальные снимаются с активного.
-
-## 16. Как проверить MikroTik API
-
-В списке MikroTik нажмите **Test Connection** (иконка вилки). Программа
-подключится по RouterOS API, обновит `last_status` / `last_error` и покажет
-результат. Также можно через REST: `POST /api/mikrotik/{id}/test`.
-
-## 17. Как создать тариф
-
-`Admin → Тарифы → Создать тариф`. Поля: name, description, price, currency,
-validity_days, speed_limit (опц.), traffic_limit (опц.), is_active. Для MVP
-тариф определяет срок доступа (`validity_days`); скорость/трафик подготовлены в
-БД, но не применяются на MikroTik.
-
-## 18. Как клиент проходит регистрацию
-
-1. Подключается к гостевому Wi-Fi.
-2. Открывает `http://SERVER_IP:8000/portal`.
-3. Вводит **только** номер телефона (IP/MAC берутся из DHCP lease автоматически).
-4. Получает SMS-код и подтверждает его.
-5. Выбирает тариф.
-6. Оплачивает (в MVP — кнопка «Тестовая оплата»).
-7. Получает интернет — IP добавляется в `allowed_clients`.
-
-## 19. Как работает SMS mock provider
-
-`SMS_PROVIDER=mock`: SMS не отправляется реально — текст пишется в консольные
-логи и таблицу `sms_logs`. Для удобства теста код также показывается на экране
-портала. Реальный провайдер подключается реализацией класса `SMSProvider` в
-`app/services/sms.py` и регистрацией в `get_sms_provider()`.
-
-## 20. Как работает mock payment provider
-
-`PAYMENT_PROVIDER=mock`: на странице оплаты кнопка «Тестовая оплата» сразу
-переводит платёж в статус `paid` и активирует клиента. Реальный электронный
-кошелёк подключается реализацией `PaymentProvider` в
-`app/services/payments.py` + webhook `POST /api/payments/webhook`.
-
-## 21. Как активируется интернет
-
-После успешной оплаты:
-1. `payment.status = paid`, `paid_at = now`.
-2. `client.status = 1 (active)`, `activated_at = now`.
-3. `client.expires_at = now + tariff.validity_days`.
-4. IP клиента добавляется в `allowed_clients` (без дубликатов).
-5. В `access_logs` пишется `activate_after_payment`.
-
-## 22. Как деактивируется интернет после окончания тарифа
-
-Задача expire-clients находит клиентов с `expires_at < now` и `status=1`,
-ставит `status=3 (expired)`, удаляет IP из `allowed_clients` и пишет лог.
-
-Запуск вручную / по cron:
-
-```bash
-curl -X POST http://SERVER_IP:8000/api/tasks/expire-clients -H "X-API-Key: <API_SECRET_KEY>"
+### 7. Hotspot (опц., для режима `hotspot`)
+```
+/ip hotspot setup                       # мастер на гостевом интерфейсе/бридже
+/ip hotspot walled-garden ip add dst-address=<SERVER_IP> action=accept
+# login page настроить на redirect к /portal
 ```
 
-Пример cron (каждые 10 минут):
+---
 
-```
-*/10 * * * * curl -s -X POST http://127.0.0.1:8000/api/tasks/expire-clients -H "X-API-Key: <API_SECRET_KEY>" >/dev/null 2>&1
-```
+## Админ-панель
 
-В дальнейшем можно заменить на APScheduler/Celery.
+`http://SERVER_IP:8000/admin` (вход из `admin_users`, первый — из `.env`).
 
-## 23. Как проверить REST API через curl
+| Страница | URL | Назначение |
+|---|---|---|
+| Dashboard | `/admin` | Статистика, статус MikroTik, последние действия |
+| Клиенты | `/admin/clients` | Поиск/фильтр, activate/deactivate/block/delete/edit, CSV |
+| Редактирование клиента | `/admin/clients/{id}/edit` | Все поля + привязка устройства из DHCP |
+| Подключенные | `/admin/connected-clients` | DHCP leases + действия + привязка |
+| Точки доступа | `/admin/access-points` | CAPsMAN: CAP, Wi-Fi клиенты, hotspot-сессии |
+| MikroTik | `/admin/mikrotik` | CRUD устройств + Test Connection + Set Active |
+| Тарифы | `/admin/tariffs` | CRUD тарифов |
+| Платежи | `/admin/payments` | Фильтры, CSV |
+| SMS / OTP | `/admin/sms-logs` | Логи SMS |
+| Access logs | `/admin/logs` | Действия (actor/phone/mac/ip), фильтры |
+| Синхронизация | `/admin/sync` | Привести allowed_clients к БД |
+| **Firewall** | `/admin/firewall` | Применить правила MikroTik из UI (предпросмотр/применить/удалить) |
+| **Интеграции** | `/admin/integrations` | SMS/оплата + режим доступа |
+| Настройки | `/admin/settings` | Сводка конфигурации |
+
+Кнопки клиента: **Activate** (status=1, доступ на MikroTik, `activated_at`),
+**Deactivate** (status=0, снять доступ), **Block** (status=4), **Delete**
+(удалить + снять доступ), **Edit** (все поля). MAC/IP редактируемы и
+привязываются из списка DHCP leases.
+
+---
+
+## Клиентский портал
+
+`http://SERVER_IP:8000/portal` — адаптирован под телефон.
+
+| Шаг | URL |
+|---|---|
+| Приветствие | `/portal` |
+| Ввод телефона | `/portal/phone` → `/portal/send-otp` |
+| Подтверждение OTP | `/portal/verify` → `/portal/verify-otp` |
+| Выбор тарифа | `/portal/tariffs` → `/portal/select-tariff` |
+| Оплата | `/portal/payment` → `/portal/create-payment` → `/portal/mock-pay` |
+| Успех / ошибка | `/portal/success` / `/portal/payment-failed` |
+| Личный кабинет | `/portal/login` → `/portal/cabinet` (статус, история, продление) |
+
+Для MVP OTP-код показывается на экране (mock SMS), оплата — кнопкой «Тестовая
+оплата». При истечении тарифа продление **добавляет** дни к текущему сроку.
+
+---
+
+## Режимы доступа
+
+Переключается в **Интеграции → Режим доступа** или `ACCESS_MODE` в `.env`:
+
+- **`address_list`** (по умолчанию): activate → IP в `allowed_clients`
+  (+ simple queue по тарифу); deactivate → удаление по `client_id`/IP. Просто и
+  надёжно для одного контроллера.
+- **`hotspot`**: activate → создать/включить hotspot-user по MAC (+ опц.
+  профиль); deactivate → отключить и сбросить активную сессию. Требует
+  настроенного Hotspot и MAC у клиента.
+
+Кнопки, портал и планировщик работают в обоих режимах.
+
+---
+
+## Фоновые задачи (scheduler)
+
+Встроенный APScheduler (`SCHEDULER_ENABLED=true`):
+- **expire** (`EXPIRE_INTERVAL_MINUTES`): деактивирует клиентов с истёкшим
+  `expires_at` (status=expired), снимает доступ.
+- **traffic** (`TRAFFIC_CHECK_ENABLED`): читает байты simple queue и деактивирует
+  при превышении `traffic_limit` тарифа.
+- **lease sync** (`LEASE_SYNC_ENABLED`): обновляет IP/hostname/`last_seen`
+  клиентов по MAC из DHCP leases.
+
+Альтернатива через cron / API: `POST /api/tasks/expire-clients`.
+
+---
+
+## Интеграции SMS и оплаты
+
+Страница **Интеграции** (`/admin/integrations`) — настройка без правки `.env`
+(значения сохраняются в БД и переопределяют `.env`; секретные ключи маскируются).
+
+- **SMS**: `mock` (код в логах/на экране) или `http` — любой REST-шлюз
+  (URL, ключ, метод GET/POST, имена полей телефон/текст/отправитель, JSON/form).
+  Кнопка «Тест SMS».
+- **Оплата**: `mock` (тест-кнопка) или `http` — создание платежа + редирект на
+  страницу шлюза; подтверждение через webhook `POST /api/payments/webhook`
+  (заголовок `X-API-Key`), возврат на `PAYMENT_RETURN_URL`.
+
+---
+
+## REST API
 
 Все эндпоинты, кроме `/health`, требуют заголовок `X-API-Key: <API_SECRET_KEY>`.
 
-```bash
-# Health
-curl http://SERVER_IP:8000/health
-
-# Клиенты
-curl http://SERVER_IP:8000/api/clients -H "X-API-Key: SECRET"
-
-# Активировать / деактивировать
-curl -X POST http://SERVER_IP:8000/api/clients/1/activate   -H "X-API-Key: SECRET"
-curl -X POST http://SERVER_IP:8000/api/clients/1/deactivate -H "X-API-Key: SECRET"
-
-# Проверить MikroTik
-curl -X POST http://SERVER_IP:8000/api/mikrotik/1/test -H "X-API-Key: SECRET"
-
-# DHCP leases
-curl http://SERVER_IP:8000/api/mikrotik/1/dhcp-leases -H "X-API-Key: SECRET"
-
-# Синхронизация
-curl -X POST http://SERVER_IP:8000/api/sync/mikrotik -H "X-API-Key: SECRET"
-
-# Expire clients
-curl -X POST http://SERVER_IP:8000/api/tasks/expire-clients -H "X-API-Key: SECRET"
-```
-
-Полный список эндпоинтов — в интерактивной документации: `http://SERVER_IP:8000/docs`.
-
-### Сводка REST API
-
 | Метод | Путь | Назначение |
-|------|------|-----------|
-| GET | `/health` | API / БД / MikroTik статус (без ключа) |
+|---|---|---|
+| GET | `/health` | Статус API / БД / MikroTik (без ключа) |
 | GET | `/api/clients` | Список клиентов (`?q=`, `?status=`) |
 | GET | `/api/clients/{id}` | Один клиент |
 | PUT | `/api/clients/{id}` | Изменить клиента |
-| DELETE | `/api/clients/{id}` | Удалить (с удалением IP, если активен) |
-| POST | `/api/clients/{id}/activate` | Активировать |
-| POST | `/api/clients/{id}/deactivate` | Деактивировать |
-| POST | `/api/clients/{id}/block` | Заблокировать |
-| POST | `/api/clients/by-mac/{mac}/activate` | Активировать по MAC |
-| POST | `/api/clients/by-mac/{mac}/deactivate` | Деактивировать по MAC |
-| GET | `/api/mikrotik` | Список устройств |
-| POST | `/api/mikrotik` | Добавить устройство |
+| DELETE | `/api/clients/{id}` | Удалить (снять доступ, если активен) |
+| POST | `/api/clients/{id}/activate` · `/deactivate` · `/block` | Управление |
+| POST | `/api/clients/by-mac/{mac}/activate` · `/deactivate` | По MAC |
+| POST | `/api/clients/{id}/bind-device` | Привязать MAC/IP/hostname |
+| GET | `/api/connected-clients` | DHCP leases активного устройства |
+| GET | `/api/mikrotik` · POST `/api/mikrotik` | Список / добавить устройство |
 | POST | `/api/mikrotik/{id}/test` | Проверить соединение |
-| GET | `/api/mikrotik/{id}/dhcp-leases` | DHCP leases |
-| GET | `/api/mikrotik/{id}/connected-clients` | Подключенные клиенты |
-| POST | `/api/sync/mikrotik` | Синхронизация |
+| GET | `/api/mikrotik/{id}/dhcp-leases` · `/connected-clients` | Данные роутера |
+| GET | `/api/mikrotik/{id}/capsman` · `/hotspot-hosts` | CAPsMAN / Hotspot |
+| POST | `/api/sync/mikrotik` · `/api/sync/mikrotik/{id}` | Синхронизация |
 | POST | `/api/payments/webhook` | Webhook оплаты |
 | POST | `/api/tasks/expire-clients` | Деактивация по истечению |
 
-## 24. Как сделать backup MikroTik перед применением правил
-
-На MikroTik:
-
+Примеры:
+```bash
+curl http://SERVER_IP:8000/health
+curl http://SERVER_IP:8000/api/clients -H "X-API-Key: SECRET"
+curl -X POST http://SERVER_IP:8000/api/clients/1/activate -H "X-API-Key: SECRET"
+curl -X POST http://SERVER_IP:8000/api/sync/mikrotik -H "X-API-Key: SECRET"
 ```
-/system backup save name=before-wifi-access
-/export file=before-wifi-access
+
+---
+
+## Модели БД
+
+| Таблица | Назначение |
+|---|---|
+| `admin_users` | Администраторы (пароль — hash) |
+| `mikrotik_devices` | Роутеры (пароль шифруется, `guest_network`, статус) |
+| `clients` | Клиенты: phone, mac/ip, hostname, status, tariff, expires_at, last_seen |
+| `tariffs` | Тарифы: цена, срок, скорость, трафик |
+| `otp_codes` | OTP (hash, TTL, попытки) |
+| `sms_logs` | Логи SMS |
+| `payments` | Платежи (статус, провайдер, paid_at) |
+| `access_logs` | Действия: action, actor, phone/mac/ip, статусы, результат/ошибка |
+| `app_settings` | Runtime-настройки интеграций/режима (поверх `.env`) |
+
+Статусы клиента: `0` inactive · `1` active · `2` pending_payment · `3` expired ·
+`4` blocked.
+
+Миграции: схема авто-добавляет недостающие колонки при старте. Для управляемых
+миграций есть Alembic (`alembic upgrade head`).
+
+---
+
+## Деплой (systemd)
+
+```bash
+cp systemd/wifi-access-manager.service /etc/systemd/system/
+nano /etc/systemd/system/wifi-access-manager.service   # проверьте пути
+systemctl daemon-reload
+systemctl enable --now wifi-access-manager
+systemctl status wifi-access-manager
+journalctl -u wifi-access-manager -f
 ```
 
-Скачайте файлы `before-wifi-access.backup` и `before-wifi-access.rsc`
-(Files в WinBox/WebFig) и сохраните в безопасном месте. Восстановление:
-`/system backup load name=before-wifi-access`.
+Юнит запускает службу под `www-data`. Поскольку SQLite пишет в каталог проекта,
+выдайте права:
+```bash
+chown -R www-data:www-data /opt/wifi-access-manager
+```
 
-## 25. Рекомендации по безопасности
+Обновление:
+```bash
+cd /opt/wifi-access-manager && git pull origin main && \
+venv/bin/pip install -r requirements.txt && \
+chown -R www-data:www-data /opt/wifi-access-manager && \
+systemctl restart wifi-access-manager
+```
 
-1. Админ-панель защищена логином/паролем; пароль хранится как hash.
-2. Пароль MikroTik **шифруется в БД** (Fernet) — в открытом виде не хранится (см. `ENCRYPTION_KEY`).
-3. Все секреты — через `.env` (не коммитьте `.env` в git, см. `.gitignore`).
-4. REST API защищён заголовком `X-API-Key`.
-5. OTP не хранится открытым текстом (только salted-hash).
-6. API MikroTik **нельзя** открывать в интернет.
-7. Для production используйте **API-SSL 8729**.
-8. Для production используйте **HTTPS** для portal и admin (reverse proxy: nginx/Caddy).
-9. Для production выделите **отдельную guest Wi-Fi** сеть.
-10. Ограничьте доступ к API MikroTik только с IP backend-сервера.
-11. Смените `SECRET_KEY`, `API_SECRET_KEY`, `ADMIN_PASSWORD` перед запуском.
+Для production рекомендуется reverse-proxy (nginx/Caddy) с HTTPS.
+
+---
+
+## Безопасность
+
+1. Админка защищена логином/паролем; пароль — hash (pbkdf2).
+2. Пароль MikroTik **шифруется** в БД (Fernet, `ENCRYPTION_KEY`).
+3. OTP хранится только как salted-hash; есть rate-limit.
+4. REST API — заголовок `X-API-Key`.
+5. Все действия логируются в `access_logs` (actor/phone/mac/ip).
+6. API MikroTik **нельзя** открывать в интернет; разрешать только с IP сервера.
+7. Для production: API-SSL 8729, HTTPS для портала/админки, отдельная guest-сеть.
+8. Смените `SECRET_KEY`, `API_SECRET_KEY`, `ADMIN_PASSWORD`, задайте
+   `ENCRYPTION_KEY` до ввода реальных данных.
+
+---
+
+## Диагностика проблем
+
+| Симптом | Причина / решение |
+|---|---|
+| `attempt to write a readonly database` | Каталог/БД принадлежат root, служба под www-data → `chown -R www-data:www-data /opt/wifi-access-manager` |
+| `detected dubious ownership` (git) | `git config --global --add safe.directory /opt/wifi-access-manager` |
+| `address already in use :8000` | Запущен старый процесс → `systemctl restart` или `pkill -f "uvicorn app.main"` |
+| В клиенте виден IP роутера, MAC пустой | Трафик гость→портал маскарадится → добавьте `no-nat` (Firewall) или привяжите устройство вручную |
+| `Test Connection` = error | На роутере выключен `api`, неверный порт/SSL, firewall роутера не пускает IP сервера |
+| Портал не открывается у гостя | Нет правила allow к серверу портала / DNS; проверьте firewall и `PUBLIC_BASE_URL` |
+| `librouteros not installed` | `pip install -r requirements.txt` в активированном venv |
+
+`/health` показывает статус БД и MikroTik.
 
 ---
 
@@ -439,336 +463,34 @@ curl -X POST http://SERVER_IP:8000/api/tasks/expire-clients -H "X-API-Key: SECRE
 
 ```
 app/
-  main.py            config.py     database.py   models.py
-  schemas.py         auth.py       dependencies.py
-  mikrotik/          client.py     service.py
-  services/          clients.py    access_control.py  logs.py   sync.py
-                     mikrotik_devices.py  sms.py  otp.py  payments.py
-                     tariffs.py    expire.py  portal.py
-  routers/           admin.py      portal.py
-                     api_clients.py  api_mikrotik.py  api_sync.py
-                     api_health.py   api_payments.py  api_tasks.py
-  templates/         (admin_*.html, portal_*.html, base.html, login.html)
-  static/            css/style.css  js/app.js
-alembic/             env.py  versions/0001_initial.py
-systemd/             wifi-access-manager.service
-requirements.txt     .env.example  README.md
+  main.py  config.py  database.py  models.py  schemas.py  auth.py  crypto.py  dependencies.py
+  mikrotik/   client.py  service.py
+  services/   clients.py  access_control.py  sync.py  expire.py  traffic.py  scheduler.py
+              mikrotik_devices.py  sms.py  otp.py  payments.py  tariffs.py  portal.py
+              firewall.py  settings_store.py  logs.py
+  routers/    admin.py  portal.py  api_clients.py  api_mikrotik.py  api_sync.py
+              api_health.py  api_payments.py  api_tasks.py  api_compat.py
+  templates/  base.html  login.html  admin_*.html  portal_*.html
+  static/     css/style.css  js/app.js
+alembic/      env.py  versions/0001_initial.py
+systemd/      wifi-access-manager.service
+requirements.txt  .env.example  README.md
 ```
 
-## Статусы клиента
-
-| Код | Статус | Цвет |
-|----|--------|------|
-| 0 | inactive | красный |
-| 1 | active | зелёный |
-| 2 | pending_payment | жёлтый |
-| 3 | expired | серый |
-| 4 | blocked | тёмно-красный |
-
-## Этап 2 (реализовано)
-
-Реализованы 4 фичи второго этапа. Все управляются через `.env`.
-
-### 1. Ограничение скорости по тарифу (simple queues)
-
-При активации клиента, если у тарифа задан `speed_limit`, на MikroTik
-создаётся **simple queue** для IP клиента (`max-limit`), при деактивации —
-удаляется. Имя очереди: `<QUEUE_PREFIX>-<client_id>`.
-
-- `speed_limit` принимает форматы: `10M` (одинаково на upload/download) или
-  `10M/20M` (upload/download).
-- Включается флагом `APPLY_QUEUES=true`.
-
-### 2. Контроль трафика по тарифу (квота)
-
-Если у тарифа задан `traffic_limit` (например `5GB`, `500M`), планировщик
-периодически читает счётчики байт у simple queue клиента и при превышении
-квоты деактивирует его (статус `expired`).
-
-- Включается флагом `TRAFFIC_CHECK_ENABLED=true`.
-- Поддерживаемые единицы: `k`, `M`, `G`, `T` (и без единиц — байты).
-
-### 3. Авто-expire через встроенный планировщик (APScheduler)
-
-Вместо cron приложение само запускает фоновый планировщик:
-- задача `expire_clients` каждые `EXPIRE_INTERVAL_MINUTES` минут;
-- задача контроля трафика каждые `TRAFFIC_CHECK_INTERVAL_MINUTES` (если включена).
-
-Управление: `SCHEDULER_ENABLED=true`. Старый ручной endpoint
-`POST /api/tasks/expire-clients` и cron по-прежнему работают.
-
-### 4. Реальный SMS-провайдер (generic HTTP)
-
-`SMS_PROVIDER=http` включает `HTTPSMSProvider` — универсальный клиент под
-любой REST SMS API:
-
-```
-SMS_PROVIDER=http
-SMS_API_URL=https://sms-gateway.example/send
-SMS_API_KEY=your_key
-SMS_API_METHOD=POST           # GET | POST
-SMS_API_AUTH_HEADER=Authorization
-SMS_API_AUTH_PREFIX=Bearer    # пробел добавляется автоматически
-SMS_PHONE_PARAM=phone         # имя поля для номера
-SMS_TEXT_PARAM=text           # имя поля для текста
-SMS_SENDER=YourName           # необязательно
-SMS_EXTRA_PARAMS={"unicode":1}  # необязательно, JSON
-SMS_JSON_BODY=true            # POST как JSON или form
-```
-
-Если провайдер другой структуры — достаточно поменять имена полей.
-
-### 5. Реальная оплата (generic HTTP gateway)
-
-`PAYMENT_PROVIDER=http` включает `HTTPPaymentProvider`. Поток:
-
-1. Клиент жмёт «Перейти к оплате» → backend создаёт платёж через
-   `PAYMENT_API_URL` и **редиректит** пользователя на платёжную страницу
-   (`payment_url` из ответа шлюза).
-2. Шлюз после оплаты вызывает наш `POST /api/payments/webhook`
-   (`X-API-Key`) со статусом `paid` → клиент активируется, IP добавляется в
-   `allowed_clients`.
-3. Шлюз возвращает пользователя на `PAYMENT_RETURN_URL` (обычно
-   `/portal/success`).
-
-```
-PAYMENT_PROVIDER=http
-PAYMENT_API_URL=https://pay.example/create
-PAYMENT_API_KEY=your_key
-PAYMENT_RETURN_URL=https://wifi.example/portal/success
-PAYMENT_CALLBACK_URL=https://wifi.example/api/payments/webhook
-PAYMENT_PAY_URL_FIELD=payment_url   # поле ответа с URL оплаты
-PAYMENT_ID_FIELD=id                 # поле ответа с id платежа
-PUBLIC_BASE_URL=https://wifi.example
-```
-
-Тело запроса к шлюзу: `amount, currency, client_id, tariff_id, return_url,
-callback_url`. Если у твоего шлюза другой формат — скажи, адаптирую провайдер.
-
-> По умолчанию `SMS_PROVIDER=mock` и `PAYMENT_PROVIDER=mock` — всё работает
-> без внешних сервисов. Реальные провайдеры включаются сменой значения на
-> `http` и заполнением соответствующих переменных.
-
-## Этап 3 (в работе)
-
-### Шифрование пароля MikroTik в БД (готово)
-
-Пароль роутера больше не хранится в открытом виде: колонка `password`
-шифруется прозрачным типом `EncryptedString` (Fernet) — в БД лежит токен
-вида `gAAAAA...`, а приложение работает с обычным значением.
-
-- **Ключ:** `ENCRYPTION_KEY` в `.env`. Если пусто — ключ детерминированно
-  выводится из `SECRET_KEY` (работает без доп. настройки).
-- Свой ключ:
-  ```bash
-  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-  ```
-- **Обратная совместимость:** старые plaintext-пароли (до включения
-  шифрования) читаются как есть. Чтобы зашифровать их — открой устройство в
-  админке и пересохрани (Edit → Save) либо нажми Test после ввода пароля.
-- ⚠️ Если задал `ENCRYPTION_KEY` и потом его сменил — ранее зашифрованные
-  пароли расшифровать не выйдет (придётся ввести заново). Меняешь
-  `SECRET_KEY` без отдельного `ENCRYPTION_KEY` — тот же эффект.
-
-### Экспорт CSV (готово)
-
-В админке на страницах **Клиенты** и **Платежи** есть кнопка **«Экспорт CSV»** —
-выгружает данные с учётом текущих фильтров (поиск/статус/телефон). Файлы в
-UTF-8 с BOM (корректно открываются в Excel).
-
-- Клиенты: `GET /admin/clients.csv?q=&status=`
-- Платежи: `GET /admin/payments.csv?status=&phone=`
-
-### Личный кабинет клиента + продление тарифа (готово)
-
-Возвращающийся клиент входит в кабинет по номеру телефона (без повторной
-регистрации устройства):
-
-- `/portal/login` → ввод номера → SMS/OTP → `/portal/cabinet`.
-- В кабинете: статус, тариф, срок, IP/MAC, **история платежей** и кнопка
-  **«Продлить / сменить тариф»**.
-- **Продление**: оплата нового тарифа **добавляет** дни к текущему сроку (если
-  он ещё активен) или начинает срок заново (если истёк) — логика
-  `extend_expiry`. Работает и для mock-, и для реальной оплаты (webhook).
-- При входе кабинет обновляет IP/MAC из текущего DHCP lease (если роутер
-  доступен), чтобы `allowed_clients` оставался актуальным.
-
-### Мониторинг CAPsMAN (готово)
-
-Архитектура: **один** MikroTik-контроллер (CAPsMAN), к которому подключены
-несколько точек доступа (**CAP**). Управляет точками сам MikroTik (SSID,
-частоты, мощность, бесшовный роуминг 802.11r); приложение работает только с
-контроллером. Поэтому отдельная логика «нескольких роутеров» не нужна:
-
-- DHCP-сервер один (на контроллере) → IP/MAC клиента определяются независимо
-  от того, к какой CAP он подключён;
-- `allowed_clients` + firewall на контроллере гейтят интернет для всех точек
-  сразу; лимит скорости (simple queue) — тоже;
-- при роуминге между CAP IP/MAC не меняются → доступ не прерывается.
-
-Админ-страница **«Точки доступа»** (`/admin/access-points`, read-only):
-- список зарегистрированных **CAP** (имя, identity, MAC, состояние, плата, версия);
-- **подключённые Wi-Fi клиенты** (MAC, интерфейс, SSID, сигнал, аптайм) с
-  отметкой, зарегистрирован ли клиент в системе и его статус.
-
-Стек беспроводной сети определяется автоматически: новый `/interface/wifi`
-(RouterOS 7), легаси `/caps-man` или `/interface/wireless`. Также есть REST:
-`GET /api/mikrotik/{id}/capsman`.
-
-### Captive redirect (готово)
-
-Чтобы портал открывался автоматически (всплывашка «Войти в сеть»), а не вручную.
-
-**1. Включи в `.env`:**
-```
-CAPTIVE_REDIRECT_ENABLED=true
-PUBLIC_BASE_URL=http://192.168.0.162:8000      # URL портала, доступный гостям
-# либо явно: CAPTIVE_PORTAL_URL=http://192.168.0.162:8000/portal
-```
-Приложение тогда на любой «чужой» запрос (captive-проба ОС, перехваченный
-trafic) отвечает `302 → портал`. Свои пути (`/portal`, `/admin`, `/api`,
-`/health`, `/static`) проходят как обычно.
-
-**2. Заверни HTTP неоплаченных клиентов на портал (MikroTik):**
-```
-/ip firewall nat
-add chain=dstnat src-address=192.168.50.0/24 src-address-list=!allowed_clients \
-    protocol=tcp dst-port=80 action=dst-nat \
-    to-addresses=192.168.0.162 to-ports=8000 \
-    comment="Captive: HTTP unpaid -> portal"
-```
-(подставь свою guest-подсеть и IP/порт сервера портала). Клиенты из
-`allowed_clients` под правило не попадают (`!allowed_clients`) и ходят свободно.
-
-**3. Разреши гостям DNS и доступ к серверу портала** — это уже есть в примере
-firewall из раздела 12 (DNS 53 + доступ к `BACKEND_SERVER_IP`).
-
-> ⚠️ **HTTPS не перехватывается** (порт 443 не заворачиваем — будет ошибка
-> сертификата; так во всех captive-системах). Но определение captive у телефонов
-> идёт по HTTP-пробам, поэтому окно «Войти в сеть» всё равно появляется и
-> открывает портал. После оплаты весь трафик (включая HTTPS) идёт свободно.
-
-### Корректное определение IP/MAC клиента (исправлено)
-
-IP роутера и IP клиента — **разные сущности** и не смешиваются:
-
-- IP роутера хранится в `mikrotik_devices.host`; IP/MAC клиента берутся из
-  **DHCP lease** и хранятся в `clients.ip_address` / `clients.mac_address`.
-- Портал определяет клиента по IP запроса → ищет lease на контроллере. Если
-  виден **IP роутера** (трафик гость→портал прошёл через `masquerade`) —
-  система это распознаёт, **не сохраняет** IP роутера как клиентский и просит
-  привязать устройство вручную. Активация тоже не пушит IP роутера в
-  `allowed_clients`.
-- Добавлено поле `clients.last_seen` (обновляется при регистрации и на странице
-  «Подключенные»).
-
-**Чтобы IP клиента определялся автоматически**, трафик гость→сервер портала не
-должен маскарадиться. Исключите его из NAT, например:
-```
-/ip firewall nat
-add chain=srcnat src-address=192.168.50.0/24 dst-address=<BACKEND_SERVER_IP> action=accept place-before=0 comment="No NAT guest->portal (keep real client IP)"
-```
-(правило `accept` выше общего `masquerade`). Либо разместите сервер портала в
-гостевой подсети, либо используйте Hotspot (он сам передаёт реальные ip/mac).
-
-**Ручная привязка устройства (если авто-определение недоступно):**
-- «Подключенные» → у незарегистрированного lease выбрать клиента → «OK»;
-- «Клиенты» → Edit → выбрать устройство из списка DHCP leases (подставит MAC/IP),
-  поля MAC/IP теперь редактируемые.
-
-Дополнительно: **rate-limit на OTP** (макс. кодов на номер в окне + кулдаун
-повторной отправки, настраивается в `.env`); **деактивация по `client_id`** —
-IP удаляется из `allowed_clients` по метке в комментарии даже если IP клиента
-изменился; в списке клиентов добавлена колонка «Активность» (`last_seen`) и
-подтверждение на блокировку/удаление.
-
-Завершение частичных пунктов (Batch 4):
-- на странице «Подключенные» — кнопки **activate/deactivate/block** прямо в строке
-  зарегистрированного клиента;
-- **авто-синхронизация leases по таймеру** (`LEASE_SYNC_ENABLED`,
-  `LEASE_SYNC_INTERVAL_MINUTES`) — обновляет IP/hostname/`last_seen` по MAC;
-- **access_logs** дополнен полями `actor` (admin/portal/system), `phone`, `mac`,
-  `ip` и показывает их в админке;
-- REST-алиасы под ТЗ: `GET /api/connected-clients`,
-  `POST /api/clients/{id}/bind-device`, `POST /api/sync/mikrotik/{id}`.
-
-### Применение firewall из админки (готово)
-
-Страница **«Firewall»** (`/admin/firewall`) применяет нужные правила на
-MikroTik по кнопке (через RouterOS API), не заходя в роутер вручную:
-
-- параметры: гостевая подсеть, IP/порт сервера портала, WAN interface-list,
-  имя address-list, включить captive-редирект;
-- **«Предпросмотр»** — показывает точные команды, которые будут добавлены;
-- **«Применить правила»** — добавляет правила filter (accept allowed_clients,
-  портал, DNS, DHCP, drop гостей) и NAT (no-nat к порталу, masquerade,
-  опц. dst-nat captive). Все помечаются комментарием `WAM:` и применяются
-  **идемпотентно** (повтор не плодит дубликаты);
-- **«Удалить все правила WAM»** — откат одним кликом.
-
-Безопасность: правило `drop` ограничено только гостевой подсетью (админка/API
-не блокируются). Всё равно перед применением сделайте **backup MikroTik** и
-проверьте на отдельной guest-сети.
-
-### Режим доступа: address-list ↔ hotspot (готово)
-
-Механизм управления доступом переключается в админке (**Интеграции → Режим
-доступа**) или через `.env` (`ACCESS_MODE`):
-
-- **`address_list`** (по умолчанию): активация добавляет IP в `allowed_clients`
-  (+ simple queue по тарифу), деактивация — удаляет (по `client_id`/IP). Текущий
-  способ, проще для одного контроллера.
-- **`hotspot`** (Variant A): активация создаёт/включает **hotspot-user** по MAC
-  клиента (опц. профиль `ACCESS_HOTSPOT_PROFILE`), деактивация — отключает
-  пользователя и сбрасывает активную сессию. Требует настроенного Hotspot на
-  MikroTik и наличия MAC у клиента.
-
-Переключение мгновенное; кнопки activate/deactivate/block, портал и планировщик
-работают в обоих режимах.
-
-### MikroTik Hotspot (интеграция, Stage 3)
-
-Доступ к интернету по-прежнему гейтится через firewall `allowed_clients`
-(оптимально для одного контроллера CAPsMAN). Дополнительно реализована
-интеграция с Hotspot:
-
-- **Чтение:** `/ip/hotspot/host` и `/ip/hotspot/active` — активные сессии
-  показываются на странице «Подключенные»; REST: `GET /api/mikrotik/{id}/hotspot-hosts`.
-- **MAC-fallback:** если клиент не найден в DHCP lease, MAC берётся из hotspot
-  host по IP (в портале).
-- **Управление пользователями** hotspot есть в API-клиенте (`add_hotspot_user`,
-  `enable/disable_hotspot_user`, `remove_hotspot_active_by_mac`) — задел под
-  hotspot-based доступ в будущем.
-
-Если захотите авто-редирект именно через Hotspot (вместо dst-nat):
-```
-/ip hotspot setup                       # мастер на гостевом интерфейсе/бридже
-/ip hotspot walled-garden ip add dst-address=<BACKEND_SERVER_IP> action=accept
-# страницу логина hotspot настроить на redirect к нашему /portal
-```
-API-пользователю нужны политики `read,write,api,test`.
-
-### Настройка SMS и оплаты через админ-панель (готово)
-
-Реальные провайдеры теперь подключаются **из админки**, без правки `.env` и
-перезапуска: страница **«Интеграции»** (`/admin/integrations`).
-
-- Для **SMS**: выбрать провайдер `http`, указать API URL, ключ, метод
-  (GET/POST), имена полей (телефон/текст/отправитель), формат тела (JSON/form);
-  кнопка **«Тест SMS»** отправляет проверочное сообщение.
-- Для **оплаты**: выбрать `http`, указать API URL создания платежа, ключ,
-  `PUBLIC_BASE_URL` и (опц.) return/callback URL, имена полей ответа.
-- Настройки хранятся в таблице `app_settings` и **переопределяют `.env`**.
-  Секретные ключи не показываются: пустое поле = «не менять».
-- По умолчанию провайдеры `mock` — всё работает без внешних сервисов.
-
-Значения из `.env` остаются дефолтами (если в админке ничего не задано).
-
-### Остальное по этапу 3
-
-Готовые пресеты под конкретных SMS/платёжных провайдеров (по запросу — под
-твои сервисы).
-
-> **MVP-замечание:** при `PORTAL_REQUIRE_LEASE=false` портал продолжает работу,
-> даже если MikroTik недоступен или DHCP lease не найден (удобно для теста без
-> оборудования). В production установите `PORTAL_REQUIRE_LEASE=true`.
+---
+
+## Статус и дальнейшее развитие
+
+**Готово:** портал + кабинет + продление, админ-панель (вкл. Firewall и
+Интеграции из UI), MikroTik RouterOS API (DHCP, address-list, queues, CAPsMAN,
+Hotspot), два режима доступа, captive-редирект, scheduler (expire/traffic/lease),
+шифрование пароля, rate-limit OTP, расширенные логи, CSV-экспорт, REST API,
+светлая/тёмная тема + многослойный «водяной» фон.
+
+**Можно развивать:** полноценный hotspot-as-access с авто-логином, реальные
+пресеты SMS/платёжных провайдеров под конкретные сервисы, модальное
+редактирование и авто-refresh таблиц, биллинг/отчётность, мультиязычность.
+
+> **MVP-замечание:** при `PORTAL_REQUIRE_LEASE=false` портал работает даже без
+> доступного MikroTik (удобно для теста). В production ставьте `true` и
+> настройте firewall + определение IP.
